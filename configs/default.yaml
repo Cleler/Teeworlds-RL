@@ -3,7 +3,7 @@
 # ============================================
 
 server:
-  host: "127.0.0.1"
+  host: "192.168.22.116"
   econ_port: 8303
   econ_password: "password"
   reconnect_delay: 2.0

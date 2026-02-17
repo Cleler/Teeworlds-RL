@@ -99,6 +99,9 @@ class Ar_2(nn.Module):
 
         backbone = resnet50(weights=ResNet50_Weights.DEFAULT if backbone_pretrained else None)
         self.backbone = nn.Sequential(*list(backbone.children())[:-1])  # → (batch, 2048)
+        
+        for param in self.backbone.parameters():
+            param.requires_grad = False
 
         self.network = nn.Sequential(
             nn.Linear(2048 + input_size, 512),
