@@ -111,7 +111,7 @@ def action_to_env(action: dict) -> dict:
     aim_x = math.cos(angle)
     aim_y = math.sin(angle)
     return {
-        "keys": np.array([action["move"], action["jump"], action["fire"], action["hook"]]),
+        "keys": np.array([action["move"], action["jump"], action["fire"], action["hook"], action["weapon"]]),
         "aim": np.array([aim_x, aim_y], dtype=np.float32),
     }
 

@@ -5,6 +5,7 @@ Gère le maintien des touches (keyDown/keyUp) et le déplacement de la souris
 pour la visée.
 """
 
+import os
 import subprocess
 import math
 import logging

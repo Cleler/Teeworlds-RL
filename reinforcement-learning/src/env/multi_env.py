@@ -271,6 +271,8 @@ class MultiEnvManager:
             env.controller.screen_center = (self.cell_w // 2, self.cell_h // 2)
             env.capture.display_id = display_id
             
+            env.setup()
+            
             self.envs.append(env)
 
         logger.info(f"{len(self.envs)}/{self.n_envs} environnements prêts")

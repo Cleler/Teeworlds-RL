@@ -57,6 +57,7 @@ class ReplayBuffer:
             "jump": torch.LongTensor([a["jump"] for a in actions]).to(device),
             "hook": torch.LongTensor([a["hook"] for a in actions]).to(device),
             "fire": torch.LongTensor([a["fire"] for a in actions]).to(device),
+            "weapon": torch.LongTensor([a["weapon"] for a in actions]).to(device),
         }
 
         # --- Rewards, dones ---

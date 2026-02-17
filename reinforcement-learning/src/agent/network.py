@@ -137,7 +137,7 @@ class Ar_2(nn.Module):
 
 
 class Ar_2Loss(nn.Module):
-    DISCRETE_HEADS = ["move", "jump", "hook", "fire"]
+    DISCRETE_HEADS = ["move", "jump", "hook", "fire", "weapon"]
 
     def __init__(self, gamma=0.99, aim_weight=1.0):
         super().__init__()

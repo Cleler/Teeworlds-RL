@@ -9,6 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-teeworlds-game**
-checkpoints**
-logs**
+**teeworlds-game**
+**checkpoints**
+**logs**
