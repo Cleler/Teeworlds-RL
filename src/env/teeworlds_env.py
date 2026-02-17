@@ -226,5 +226,5 @@ class TeeWorldsEnv(gym.Env):
             "step": self.current_step,
             "kills": self.episode_kills,
             "deaths": self.episode_deaths,
-            "alive": not self.econ.is_player_dead(),
+            "alive": not self.econ.is_player_dead(self.agent_id),
         }
