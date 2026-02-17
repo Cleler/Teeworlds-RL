@@ -1,0 +1,66 @@
+# ============================================
+# Teeworlds RL - Configuration
+# ============================================
+
+server:
+  host: "127.0.0.1"
+  econ_port: 8303
+  econ_password: "password"
+  # Délai entre les tentatives de reconnexion econ (secondes)
+  reconnect_delay: 2.0
+  # Timeout lecture econ (secondes)
+  read_timeout: 0.05
+
+capture:
+  # Zone de capture écran (pixels)
+  monitor:
+    top: 0
+    left: 0
+    width: 800
+    height: 600
+  # Résolution de l'observation après resize
+  obs_width: 84
+  obs_height: 84
+  # Grayscale ou RGB
+  grayscale: true
+
+input:
+  # Rayon de déplacement souris pour la visée (pixels depuis le centre)
+  aim_radius: 300
+  # Mapping des touches
+  keys:
+    left: "a"
+    right: "d"
+    jump: "space"
+    fire: "mouse_left"
+    hook: "shift"
+
+env:
+  # Tick rate de l'environnement (Hz)
+  tick_rate: 30
+  # Max steps par épisode
+  max_steps: 3000
+  # Délai après reset (secondes)
+  reset_delay: 3.0
+
+reward:
+  kill: 1.0
+  death: -1.0
+  damage_dealt: 0.01
+  survival_bonus: 0.001
+  # Reward shaping optionnel
+  distance_to_enemy: 0.0
+
+training:
+  algorithm: "PPO"
+  total_timesteps: 1_000_000
+  learning_rate: 0.0003
+  batch_size: 64
+  n_steps: 2048
+  gamma: 0.99
+  # Nombre d'environnements parallèles
+  n_envs: 1
+  # Sauvegarde
+  save_freq: 50_000
+  save_path: "./checkpoints"
+  log_path: "./logs"
