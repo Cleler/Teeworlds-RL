@@ -36,18 +36,26 @@ class TeeWorldsEnv(gym.Env):
 
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
-    def __init__(self, config: dict, render_mode: Optional[str] = None):
+    def __init__(self, config: dict, render_mode: Optional[str] = None, shared_econ: Optional[EconClient] = None, agent_id: int = 0):
         super().__init__()
         self.config = config
         self.render_mode = render_mode
-
+        self.agent_id = agent_id
+        
         # ---- Composants ----
-        self.econ = EconClient(
+        self.is_shared_econ = shared_econ is not None
+        self.econ = shared_econ if shared_econ else EconClient(
             host=config["server"]["host"],
             port=config["server"]["econ_port"],
             password=config["server"]["econ_password"],
             read_timeout=config["server"]["read_timeout"],
         )
+        # self.econ = EconClient(
+        #     host=config["server"]["host"],
+        #     port=config["server"]["econ_port"],
+        #     password=config["server"]["econ_password"],
+        #     read_timeout=config["server"]["read_timeout"],
+        # )
         self.capture = ScreenCapture(
             monitor=config["capture"]["monitor"],
             obs_width=config["capture"]["obs_width"],
@@ -105,22 +113,29 @@ class TeeWorldsEnv(gym.Env):
         self.controller.release_all()
 
         # Restart via econ
-        self.econ.restart_round()
-        time.sleep(self.reset_delay)
-
+        # self.econ.restart_round()
+        # time.sleep(self.reset_delay)
+        if not getattr(self, "is_shared_econ", False):
+            self.econ.restart_round()
+            time.sleep(self.reset_delay)
+            self.econ.poll()
+        else:
+            time.sleep(self.reset_delay)
+        
         # Reset état interne
         self.current_step = 0
         self.episode_kills = 0
         self.episode_deaths = 0
 
-        # Vider le buffer econ
-        self.econ.poll()
-        self.econ.prev_kills = self.econ.kills
-        self.econ.prev_deaths = self.econ.deaths
+        # # Vider le buffer econ
+        # self.econ.poll()
+        # self.econ.prev_kills = self.econ.kills
+        # self.econ.prev_deaths = self.econ.deaths
 
-        obs = self._get_observation()
-        info = self._get_info()
-        return obs, info
+        # obs = self._get_observation()
+        # info = self._get_info()
+        # return obs, info
+        return self._get_observation(), self._get_info()
 
     def step(self, action):
         self.current_step += 1
@@ -133,6 +148,7 @@ class TeeWorldsEnv(gym.Env):
             jump=int(keys[1]),
             fire=int(keys[2]),
             hook=int(keys[3]),
+            weapon_switch=int(keys[4]) if len(keys)>4 else 0,
             aim_x=float(aim[0]),
             aim_y=float(aim[1]),
         )
@@ -141,12 +157,14 @@ class TeeWorldsEnv(gym.Env):
         time.sleep(self.tick_interval)
 
         # Lire les événements serveur
-        self.econ.poll()
+        # self.econ.poll()
+        if not getattr(self, "is_shared_econ", False):
+            self.econ.poll()
 
         # Construire la réponse
         obs = self._get_observation()
         reward = self._compute_reward()
-        terminated = self.econ.is_player_dead()
+        terminated = self.econ.is_player_dead(self.agent_id)
         truncated = self.current_step >= self.max_steps
         info = self._get_info()
 
@@ -160,7 +178,9 @@ class TeeWorldsEnv(gym.Env):
         logger.info("Fermeture de l'environnement")
         self.controller.release_all()
         self.capture.stop()
-        self.econ.disconnect()
+        # self.econ.disconnect()
+        if not getattr(self, "is_shared_econ", False):
+            self.econ.disconnect()
 
     # ------------------------------------------------------------------
     # Setup / Teardown
@@ -172,10 +192,11 @@ class TeeWorldsEnv(gym.Env):
         Séparé de __init__ pour permettre la gestion d'erreurs.
         """
         self.capture.start()
-        if not self.econ.connect():
-            raise ConnectionError("Impossible de se connecter à econ")
-        logger.info("Environnement prêt")
-
+        if not self.is_shared_econ:
+            if not self.econ.connect():
+                raise ConnectionError("Impossible de se connecter à econ")
+        logger.info(f"Environnement {self.agent_id} prêt")
+    
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
@@ -184,12 +205,12 @@ class TeeWorldsEnv(gym.Env):
         image = self.capture.grab()
         x, y = self.econ.get_position()
         return {
-            "image": image,
-            "position": np.array([x, y], dtype=np.float32),
+            "image": self.capture.grab(),
+            "position": np.array(self.econ.get_position(self.agent_id), dtype=np.float32),
         }
 
     def _compute_reward(self) -> float:
-        kills, deaths = self.econ.get_score()
+        kills, deaths = self.econ.get_score(self.agent_id)
         self.episode_kills += kills
         self.episode_deaths += deaths
 

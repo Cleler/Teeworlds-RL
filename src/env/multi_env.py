@@ -180,6 +180,16 @@ class MultiEnvManager:
         """Crée un TeeWorldsEnv par client, chacun ciblant sa fenêtre."""
         logger.info("Création des environnements...")
 
+        self.shared_econ = EconClient(
+            host=self.server_ip,
+            port=self.config["server"]["econ_port"],
+            password=self.config["server"]["econ_password"],
+            read_timeout=self.config["server"]["read_timeout"]
+        )
+        if not self.shared_econ.connect():
+            logger.error("Échec de connexion du EconClient partagé !")
+            return
+        
         for i, window_id in enumerate(self.client_window_ids):
             if window_id is None:
                 logger.warning(f"Env {i} ignoré: pas de fenêtre")
@@ -193,7 +203,8 @@ class MultiEnvManager:
             # Créer une config spécifique à cet env
             env_config = self._make_env_config(i, x, y)
 
-            env = TeeWorldsEnv(env_config)
+            # env = TeeWorldsEnv(env_config)
+            env = TeeWorldsEnv(env_config, shared_econ=self.shared_econ, agent_id=i)
 
             # Injecter le window_id directement au lieu de chercher
             env.controller.window_id = window_id
@@ -213,9 +224,9 @@ class MultiEnvManager:
             env.capture.start()
 
             # Connexion econ (partagée ou séparée selon le setup)
-            if not env.econ.connect():
-                logger.error(f"Env {i}: échec connexion econ")
-                continue
+            # if not env.econ.connect():
+            #     logger.error(f"Env {i}: échec connexion econ")
+            #     continue
 
             self.envs.append(env)
             logger.info(f"Env {i} créé: fenêtre={window_id} capture=({x},{y},{self.cell_w},{self.cell_h})")
@@ -242,6 +253,9 @@ class MultiEnvManager:
 
     def reset_all(self) -> list[dict]:
         """Reset tous les envs en parallèle."""
+        if hasattr(self, 'shared_econ'):
+            self.shared_econ.restart_round()
+            self.shared_econ.poll()
         def _reset(env):
             return env.reset()
 
@@ -250,12 +264,21 @@ class MultiEnvManager:
         return [obs for obs, info in results]
 
     def step_all(self, actions):
-        results = []
-        for i, (env, action) in enumerate(zip(self.envs, actions)):
-            logger.debug(f"Stepping env {i}...")
-            results.append(env.step(action))
-            logger.debug(f"Env {i} done")
-        return results
+        # results = []
+        # for i, (env, action) in enumerate(zip(self.envs, actions)):
+        #     logger.debug(f"Stepping env {i}...")
+        #     results.append(env.step(action))
+        #     logger.debug(f"Env {i} done")
+        # return results
+        if hasattr(self, 'shared_econ'):
+            self.shared_econ.poll()
+
+        def _step(args):
+            env, action = args
+            return env.step(action)
+
+        futures = [self.executor.submit(_step, (env, act)) for env, act in zip(self.envs, actions)]
+        return [f.result() for f in futures]
             
     # ------------------------------------------------------------------
     # Nettoyage
@@ -280,5 +303,7 @@ class MultiEnvManager:
             except Exception:
                 proc.kill()
 
+        if hasattr(self, 'shared_econ'):
+            self.shared_econ.disconnect()
         self.executor.shutdown(wait=False)
         logger.info("Tout fermé")
