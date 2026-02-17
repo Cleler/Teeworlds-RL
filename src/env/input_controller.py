@@ -115,32 +115,29 @@ class InputController:
     def _hold_key(self, key: str):
         """Maintient une touche ou un bouton de souris enfoncé."""
         if key not in self.held_keys:
-            if self.window_id:
-                if key.startswith("mouse_"):
-                    self._run_xdotool(["mousedown", self._get_mouse_button(key)])
-                else:
-                    self._run_xdotool(["keydown", key])
-                self.held_keys.add(key)
+            if key.startswith("mouse_"):
+                self._run_xdotool(["mousedown", self._get_mouse_button(key)])
+            else:
+                self._run_xdotool(["keydown", key])
+            self.held_keys.add(key)
 
     def _release_key(self, key: str):
         """Relâche une touche ou un bouton de souris."""
         if key in self.held_keys:
-            if self.window_id:
-                if key.startswith("mouse_"):
-                    btn = self._get_mouse_button(key)
-                    self._run_xdotool(["mouseup", self._get_mouse_button(key)])
-                else:
-                    self._run_xdotool(["keyup", key])
+            if key.startswith("mouse_"):
+                btn = self._get_mouse_button(key)
+                self._run_xdotool(["mouseup", self._get_mouse_button(key)])
+            else:
+                self._run_xdotool(["keyup", key])
             self.held_keys.discard(key)
 
     def _tap_key(self, key: str):
         """Appuie et relâche un petit coup."""
-        if self.window_id:
-            if key.startswith("mouse_"):
-                btn = self._get_mouse_button(key)
-                self._run_xdotool(["click", self._get_mouse_button(key)])
-            else:
-                self._run_xdotool(["key", key])
+        if key.startswith("mouse_"):
+            btn = self._get_mouse_button(key)
+            self._run_xdotool(["click", self._get_mouse_button(key)])
+        else:
+            self._run_xdotool(["key", key])
 
     def _update_hold(self, key: str, pressed: bool):
         """Met à jour l'état maintenu d'une touche/souris."""
