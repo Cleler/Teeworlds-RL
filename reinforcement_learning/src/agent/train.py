@@ -14,10 +14,10 @@ import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from src.env.teeworlds_env import TeeWorldsEnv
-from src.env.multi_env import MultiEnvManager
-from src.agent.network import Ar_2, Ar_2Loss
-from src.agent.replay_buffer import ReplayBuffer
+from reinforcement_learning.src.env.teeworlds_env import TeeWorldsEnv
+from reinforcement_learning.src.env.multi_env import MultiEnvManager
+from reinforcement_learning.src.agent.network import Ar_2, Ar_2Loss
+from reinforcement_learning.src.agent.replay_buffer import ReplayBuffer
 
 logger = logging.getLogger(__name__)
 

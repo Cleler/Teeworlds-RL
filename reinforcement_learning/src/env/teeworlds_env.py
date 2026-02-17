@@ -12,9 +12,9 @@ import time
 import logging
 from typing import Optional
 
-from src.env.econ_client import EconClient
-from src.env.screen_capture import ScreenCapture
-from src.env.input_controller import InputController
+from reinforcement_learning.src.env.econ_client import EconClient
+from reinforcement_learning.src.env.screen_capture import ScreenCapture
+from reinforcement_learning.src.env.input_controller import InputController
 
 logger = logging.getLogger(__name__)
 

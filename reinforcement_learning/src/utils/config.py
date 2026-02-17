@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def load_config(path: str = "configs/default.yaml") -> dict:
+def load_config(path: str = "reinforcement_learning/configs/default.yaml") -> dict:
     """Charge la configuration depuis un fichier YAML."""
     with open(path, "r") as f:
         config = yaml.safe_load(f)

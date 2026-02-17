@@ -4,8 +4,8 @@
 import argparse
 import logging
 
-from src.utils.config import load_config
-from src.agent.train import load_and_play
+from reinforcement_learning.src.utils.config import load_config
+from reinforcement_learning.src.agent.train import load_and_play
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,7 +16,7 @@ logging.basicConfig(
 def main():
     parser = argparse.ArgumentParser(description="Teeworlds RL - Évaluation")
     parser.add_argument(
-        "--config", type=str, default="configs/default.yaml",
+        "--config", type=str, default="reinforcement_learning/configs/default.yaml",
         help="Chemin vers le fichier de configuration",
     )
     parser.add_argument(
