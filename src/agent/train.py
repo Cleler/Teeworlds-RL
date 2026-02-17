@@ -128,6 +128,10 @@ def train_step(model, target_model, optimizer, criterion, buffer, batch_size, de
     with torch.no_grad():
         next_outputs = target_model(batch["next_images"], batch["next_positions"])
 
+    print("actions", batch["actions"])
+    print("rewards", batch["rewards"])
+    print("aim", batch["aim_targets"])
+
     loss = criterion(
         outputs=outputs,
         actions=batch["actions"],
@@ -205,8 +209,8 @@ def train_multi(config: dict):
     eps_start = train_cfg.get("eps_start", 1.0)
     eps_end = train_cfg.get("eps_end", 0.05)
     eps_decay = train_cfg.get("eps_decay", 50_000)
-    target_update = train_cfg.get("target_update", 1000)
-    min_buffer_size = train_cfg.get("min_buffer_size", 1000)
+    target_update = train_cfg.get("target_update", 100)
+    min_buffer_size = train_cfg.get("min_buffer_size", 100)
     total_timesteps = train_cfg["total_timesteps"]
     save_freq = train_cfg["save_freq"]
 
@@ -231,7 +235,9 @@ def train_multi(config: dict):
 
             # Step sur tous les envs
             env_actions = [action_to_env(a) for a in actions]
+            print(env_actions)
             results = manager.step_all(env_actions)
+
 
             # Stocker les transitions et gérer les épisodes
             new_obs_list = []
@@ -242,7 +248,7 @@ def train_multi(config: dict):
                 aim_target = act["aim"]
                 buffer.push(obs, act, reward, next_obs, float(done), aim_target)
                 episode_rewards[i] += reward
-
+                
                 if done:
                     episode_counts[i] += 1
                     writer.add_scalar(f"env_{i}/episode_reward", episode_rewards[i], episode_counts[i])
@@ -263,11 +269,17 @@ def train_multi(config: dict):
                     new_obs_list.append(next_obs)
 
             obs_list = new_obs_list
-
+            print("="*50)
+            print(buffer)
+            print(len(buffer))
+            print(min_buffer_size)
             # ---- Entraînement ----
+            print(buffer.buffer[0])
+
             if len(buffer) >= min_buffer_size:
                 loss = train_step(model, target_model, optimizer, criterion,
                                   buffer, batch_size, device)
+                print("loss", loss)
 
                 if global_step % (100 * actual_n) == 0:
                     writer.add_scalar("train/loss", loss, global_step)
@@ -328,7 +340,7 @@ def train_single(config: dict):
     eps_end = train_cfg.get("eps_end", 0.05)
     eps_decay = train_cfg.get("eps_decay", 50_000)
     target_update = train_cfg.get("target_update", 1000)
-    min_buffer_size = train_cfg.get("min_buffer_size", 1000)
+    min_buffer_size = train_cfg.get("min_buffer_size", 100)
     total_timesteps = train_cfg["total_timesteps"]
     save_freq = train_cfg["save_freq"]
 

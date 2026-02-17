@@ -249,26 +249,14 @@ class MultiEnvManager:
         results = [f.result() for f in futures]
         return [obs for obs, info in results]
 
-    def step_all(self, actions: list[dict]) -> list[tuple]:
-        """
-        Step sur tous les envs en parallèle.
-
-        Args:
-            actions: Liste d'actions, une par env.
-
-        Returns:
-            Liste de (obs, reward, terminated, truncated, info).
-        """
-        def _step(args):
-            env, action = args
-            return env.step(action)
-
-        futures = [
-            self.executor.submit(_step, (env, act))
-            for env, act in zip(self.envs, actions)
-        ]
-        return [f.result() for f in futures]
-
+    def step_all(self, actions):
+        results = []
+        for i, (env, action) in enumerate(zip(self.envs, actions)):
+            logger.debug(f"Stepping env {i}...")
+            results.append(env.step(action))
+            logger.debug(f"Env {i} done")
+        return results
+            
     # ------------------------------------------------------------------
     # Nettoyage
     # ------------------------------------------------------------------
