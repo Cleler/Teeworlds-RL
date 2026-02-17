@@ -89,7 +89,7 @@ class TeeWorldsEnv(gym.Env):
         })
 
         self.action_space = spaces.Dict({
-            "keys": spaces.MultiDiscrete([3, 2, 2, 2]),  # direction, jump, fire, hook
+            "keys": spaces.MultiDiscrete([3, 2, 2, 2, 3]),  # direction, jump, fire, hook, weapon switch
             "aim": spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
         })
 

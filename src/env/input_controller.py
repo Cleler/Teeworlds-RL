@@ -37,7 +37,7 @@ class InputController:
     # ------------------------------------------------------------------
 
     def apply_action(self, direction: int, jump: int, fire: int,
-                     hook: int, aim_x: float, aim_y: float):
+                     hook: int, weapon_switch: int, aim_x: float, aim_y: float):
         """
         Applique une action complète.
 
@@ -62,6 +62,12 @@ class InputController:
             
         self._update_hold(self.keys["hook"], bool(hook))
 
+        # Weapon Switch
+        if weapon_switch == 1:
+            self._tap_key("mouse_scroll_up")    # Arme précédente (molette haut)
+        elif weapon_switch == 2:
+            self._tap_key("mouse_scroll_down")  # Arme suivante (molette bas)        
+        
         # Visée
         self._move_aim(aim_x, aim_y)
 
@@ -99,9 +105,12 @@ class InputController:
     def _get_mouse_button(self, key: str) -> str:
         """Convertit le nom de la touche en ID de bouton xdotool."""
         if key == "mouse_left": return "1"
+        if key == "mouse_middle": return "2"
         if key == "mouse_right": return "3"
+        if key == "mouse_scroll_up": return "4"
+        if key == "mouse_scroll_down": return "5"
         return "1"
-    
+        
     def _hold_key(self, key: str):
         """Maintient une touche ou un bouton de souris enfoncé."""
         if key not in self.held_keys:

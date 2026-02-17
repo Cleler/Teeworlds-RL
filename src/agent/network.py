@@ -117,6 +117,7 @@ class Ar_2(nn.Module):
         self.head_jump = nn.Linear(128, 2)   # no jump, jump
         self.head_hook = nn.Linear(128, 2)   # no hook, hook
         self.head_fire = nn.Linear(128, 2)   # no fire, fire
+        self.head_weapon = nn.Linear(128, 3)   # 0: rien, 1: scroll haut, 2: scroll bas
 
         # Continuous head — aim as (sin, cos)
         self.head_aim = nn.Linear(128, 2)

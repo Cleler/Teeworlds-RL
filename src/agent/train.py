@@ -21,8 +21,8 @@ from src.agent.replay_buffer import ReplayBuffer
 
 logger = logging.getLogger(__name__)
 
-DISCRETE_HEADS = ["move", "jump", "hook", "fire"]
-HEAD_SIZES = {"move": 3, "jump": 2, "hook": 2, "fire": 2}
+DISCRETE_HEADS = ["move", "jump", "hook", "fire", "weapon"]
+HEAD_SIZES = {"move": 3, "jump": 2, "hook": 2, "fire": 2, "weapon": 3}
 
 
 # ======================================================================

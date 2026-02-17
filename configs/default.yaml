@@ -44,8 +44,8 @@ reward:
 # ============================================
 multi_env:
   enabled: true             # false → mode single, true → mode grille
-  n_envs: 4                 # nombre de clients (commence petit, augmente après)
-  grid_cols: 2              # colonnes de la grille (null = auto √n)
+  n_envs: 16                 # nombre de clients (commence petit, augmente après)
+  grid_cols: 4              # colonnes de la grille (null = auto √n)
 
   # Résolution de ton écran
   screen_width: 1920
