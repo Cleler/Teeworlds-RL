@@ -31,6 +31,7 @@ class InputController:
         self.aim_radius = aim_radius
         self.screen_center = screen_center
         self.held_keys: Set[str] = set()
+        self.window_id = None
 
     def set_screen_center(self, center_x: int, center_y: int):
         """Met à jour le centre de l'écran (si la fenêtre bouge)."""
@@ -89,39 +90,47 @@ class InputController:
         """Déplace la souris pour viser dans une direction."""
         target_x = self.screen_center[0] + int(aim_x * self.aim_radius)
         target_y = self.screen_center[1] + int(aim_y * self.aim_radius)
-        pyautogui.moveTo(target_x, target_y, _pause=False)
+        # pyautogui.moveTo(target_x, target_y, _pause=False)
+        if self.window_id:
+            # xdotool mousemove --window cible la position relative à la fenêtre
+            subprocess.run(
+                ["xdotool", "mousemove", "--window", str(self.window_id), str(target_x), str(target_y)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+    
+    def _click(self):
+        if self.window_id:
+            subprocess.run(["xdotool", "click", "--window", str(self.window_id), "1"], stdout=subprocess.DEVNULL)
 
     # ------------------------------------------------------------------
     # Gestion des touches
     # ------------------------------------------------------------------
 
     def _hold_key(self, key: str):
-        """Maintient une touche enfoncée."""
         if key not in self.held_keys:
-            pyautogui.keyDown(key)
+            if self.window_id:
+                subprocess.run(["xdotool", "keydown", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
             self.held_keys.add(key)
 
     def _release_key(self, key: str):
-        """Relâche une touche."""
         if key in self.held_keys:
-            pyautogui.keyUp(key)
+            if self.window_id:
+                subprocess.run(["xdotool", "keyup", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
             self.held_keys.discard(key)
 
     def _tap_key(self, key: str):
-        """Appuie et relâche une touche."""
-        pyautogui.press(key)
+        if self.window_id:
+            subprocess.run(["xdotool", "key", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
 
     def _update_hold(self, key: str, pressed: bool):
-        """Met à jour l'état maintenu d'une touche."""
         if pressed:
             self._hold_key(key)
         else:
             self._release_key(key)
 
     def release_all(self):
-        """Relâche toutes les touches maintenues."""
         for key in list(self.held_keys):
-            pyautogui.keyUp(key)
+            self._release_key(key)
         self.held_keys.clear()
 
     # ------------------------------------------------------------------
