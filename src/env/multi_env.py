@@ -94,12 +94,17 @@ class MultiEnvManager:
             x = col * self.cell_w
             y = row * self.cell_h
 
-            # Lancer le client
-            # NOTE: Les args dépendent de ta version de TW.
-            # TW 0.7 : "connect <ip>:<port>" en argument ou via config
+            # Lancer le client en mode fenêtré avec la bonne résolution
             process = subprocess.Popen(
                 [
                     self.tw_binary,
+                    # Mode fenêtré
+                    "gfx_fullscreen", "0",
+                    "gfx_borderless", "0",
+                    # Résolution de la cellule
+                    "gfx_screen_width", str(self.cell_w),
+                    "gfx_screen_height", str(self.cell_h),
+                    # Connexion auto au serveur
                     f"connect {self.server_ip}:{self.server_port}",
                 ],
                 stdout=subprocess.DEVNULL,
@@ -145,20 +150,23 @@ class MultiEnvManager:
 
     def _position_window(self, window_id: str, x: int, y: int, w: int, h: int):
         """Positionne et redimensionne une fenêtre."""
+        if not window_id:
+            return
         try:
-            # Retirer les décorations pour gagner de la place
+            # Dé-maximiser / dé-fullscreen d'abord
             subprocess.run(
-                ["xdotool", "set_window", "--overrideredirect", "1", window_id],
+                ["wmctrl", "-i", "-r", window_id, "-b", "remove,maximized_vert,maximized_horz,fullscreen"],
                 capture_output=True, timeout=5
             )
-            # Redimensionner
+            time.sleep(0.3)
+
+            # Redimensionner puis positionner
             subprocess.run(
-                ["xdotool", "windowsize", window_id, str(w), str(h)],
+                ["xdotool", "windowsize", "--sync", window_id, str(w), str(h)],
                 capture_output=True, timeout=5
             )
-            # Positionner
             subprocess.run(
-                ["xdotool", "windowmove", window_id, str(x), str(y)],
+                ["xdotool", "windowmove", "--sync", window_id, str(x), str(y)],
                 capture_output=True, timeout=5
             )
         except Exception as e:
