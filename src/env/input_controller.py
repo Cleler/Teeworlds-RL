@@ -5,17 +5,12 @@ Gère le maintien des touches (keyDown/keyUp) et le déplacement de la souris
 pour la visée.
 """
 
-import pyautogui
+import subprocess
 import math
 import logging
 from typing import Set
 
 logger = logging.getLogger(__name__)
-
-# Désactiver le failsafe pyautogui (coin de l'écran) et le délai
-pyautogui.FAILSAFE = False
-pyautogui.PAUSE = 0
-
 
 class InputController:
     def __init__(self, key_mapping: dict, aim_radius: int = 300,

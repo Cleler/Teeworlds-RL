@@ -34,10 +34,10 @@ env:
   reset_delay: 3.0
 
 reward:
-  kill: 1.0
+  kill: 5.0
   death: -1.0
-  damage_dealt: 0.01
-  survival_bonus: 0.001
+  damage_dealt: 1.0
+  survival_bonus: 0.0001
 
 # ============================================
 # Multi-environnement (grille de clients)
