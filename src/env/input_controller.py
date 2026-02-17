@@ -63,9 +63,8 @@ class InputController:
 
         # Fire (clic souris)
         if fire:
-            pyautogui.click()
-
-        # Hook
+            self._tap_key(self.keys["fire"])
+            
         self._update_hold(self.keys["hook"], bool(hook))
 
         # Visée
@@ -98,37 +97,56 @@ class InputController:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
     
-    def _click(self):
-        if self.window_id:
-            subprocess.run(["xdotool", "click", "--window", str(self.window_id), "1"], stdout=subprocess.DEVNULL)
-
     # ------------------------------------------------------------------
     # Gestion des touches
     # ------------------------------------------------------------------
 
+    def _get_mouse_button(self, key: str) -> str:
+        """Convertit le nom de la touche en ID de bouton xdotool."""
+        if key == "mouse_left": return "1"
+        if key == "mouse_right": return "3"
+        return "1"
+    
     def _hold_key(self, key: str):
+        """Maintient une touche ou un bouton de souris enfoncé."""
         if key not in self.held_keys:
             if self.window_id:
-                subprocess.run(["xdotool", "keydown", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
+                if key.startswith("mouse_"):
+                    btn = self._get_mouse_button(key)
+                    subprocess.run(["xdotool", "mousedown", "--window", str(self.window_id), btn], stdout=subprocess.DEVNULL)
+                else:
+                    subprocess.run(["xdotool", "keydown", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
             self.held_keys.add(key)
 
     def _release_key(self, key: str):
+        """Relâche une touche ou un bouton de souris."""
         if key in self.held_keys:
             if self.window_id:
-                subprocess.run(["xdotool", "keyup", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
+                if key.startswith("mouse_"):
+                    btn = self._get_mouse_button(key)
+                    subprocess.run(["xdotool", "mouseup", "--window", str(self.window_id), btn], stdout=subprocess.DEVNULL)
+                else:
+                    subprocess.run(["xdotool", "keyup", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
             self.held_keys.discard(key)
 
     def _tap_key(self, key: str):
+        """Appuie et relâche un petit coup."""
         if self.window_id:
-            subprocess.run(["xdotool", "key", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
+            if key.startswith("mouse_"):
+                btn = self._get_mouse_button(key)
+                subprocess.run(["xdotool", "click", "--window", str(self.window_id), btn], stdout=subprocess.DEVNULL)
+            else:
+                subprocess.run(["xdotool", "key", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
 
     def _update_hold(self, key: str, pressed: bool):
+        """Met à jour l'état maintenu d'une touche/souris."""
         if pressed:
             self._hold_key(key)
         else:
             self._release_key(key)
 
     def release_all(self):
+        """Relâche tout (sécurité quand l'agent meurt)."""
         for key in list(self.held_keys):
             self._release_key(key)
         self.held_keys.clear()
