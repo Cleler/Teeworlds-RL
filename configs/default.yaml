@@ -15,11 +15,8 @@ capture:
     left: 0
     width: 800
     height: 600
-  # ResNet50 attend du 224x224 RGB idéalement,
-  # mais ça marche aussi en plus petit. 84x84 pour la vitesse.
   obs_width: 84
   obs_height: 84
-  # IMPORTANT: false pour ResNet50 (3 canaux RGB requis)
   grayscale: false
 
 input:
@@ -42,33 +39,41 @@ reward:
   damage_dealt: 0.01
   survival_bonus: 0.001
 
-training:
-  # Architecture
-  architecture: "Ar_2"     # "Ar_1" ou "Ar_2"
-  pretrained: false         # Poids ImageNet pour ResNet50
+# ============================================
+# Multi-environnement (grille de clients)
+# ============================================
+multi_env:
+  enabled: true             # false → mode single, true → mode grille
+  n_envs: 4                 # nombre de clients (commence petit, augmente après)
+  grid_cols: 2              # colonnes de la grille (null = auto √n)
 
-  # DQN
+  # Résolution de ton écran
+  screen_width: 1920
+  screen_height: 1080
+
+  # Chemin vers le binaire client Teeworlds
+  tw_binary: "./teeworlds-game/build/teeworlds"
+
+  # Port du serveur de jeu (pas econ)
+  game_port: 8303
+
+  # Délai entre chaque lancement de client (secondes)
+  connect_delay: 3.0
+
+training:
+  architecture: "Ar_2"
+  pretrained: false
   total_timesteps: 500_000
   learning_rate: 0.0001
   batch_size: 32
   gamma: 0.99
-
-  # Epsilon-greedy
   eps_start: 1.0
   eps_end: 0.05
   eps_decay: 50_000
-
-  # Replay buffer
   buffer_size: 100_000
   min_buffer_size: 1000
-
-  # Target network
   target_update: 1000
-
-  # Aim loss weight
   aim_weight: 1.0
-
-  # Sauvegarde
   save_freq: 50_000
   save_path: "./checkpoints"
   log_path: "./logs"
