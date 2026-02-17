@@ -24,6 +24,7 @@ from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
 from src.env.teeworlds_env import TeeWorldsEnv
+from src.env.econ_client import EconClient
 
 logger = logging.getLogger(__name__)
 
