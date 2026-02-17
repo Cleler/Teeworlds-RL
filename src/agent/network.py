@@ -104,23 +104,23 @@ class Ar_2(nn.Module):
             param.requires_grad = False
 
         self.network = nn.Sequential(
-            nn.Linear(2048 + input_size, 512),
+            nn.Linear(2048 + input_size, 128),
             nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(64, 32),
             nn.ReLU(),
         )
 
         # Discrete heads
-        self.head_move = nn.Linear(128, 3)   # left, none, right
-        self.head_jump = nn.Linear(128, 2)   # no jump, jump
-        self.head_hook = nn.Linear(128, 2)   # no hook, hook
-        self.head_fire = nn.Linear(128, 2)   # no fire, fire
-        self.head_weapon = nn.Linear(128, 3)   # 0: rien, 1: scroll haut, 2: scroll bas
+        self.head_move = nn.Linear(32, 3)   # left, none, right
+        self.head_jump = nn.Linear(32, 2)   # no jump, jump
+        self.head_hook = nn.Linear(32, 2)   # no hook, hook
+        self.head_fire = nn.Linear(32, 2)   # no fire, fire
+        self.head_weapon = nn.Linear(32, 3)   # 0: rien, 1: scroll haut, 2: scroll bas
 
         # Continuous head — aim as (sin, cos)
-        self.head_aim = nn.Linear(128, 2)
+        self.head_aim = nn.Linear(32, 2)
 
     def forward(self, image, extra_vars):
         img_features = self.backbone(image).flatten(1)               # (batch, 2048)
