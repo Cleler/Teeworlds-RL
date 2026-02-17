@@ -5,7 +5,7 @@
 server:
   host: "127.0.0.1"
   econ_port: 8303
-  econ_password: "ton_password"
+  econ_password: "password"
   reconnect_delay: 2.0
   read_timeout: 0.05
 
@@ -29,7 +29,7 @@ input:
     right: "d"
     jump: "space"
     fire: "mouse_left"
-    hook: "shift"
+    hook: "mouse_right"
 
 env:
   tick_rate: 30

@@ -13,7 +13,8 @@
 
 set -e
 
-TEEWORLDS_SERVER="${1:-teeworlds_srv}"
+# TEEWORLDS_SERVER="${1:-teeworlds_srv}"
+TEEWORLDS_SERVER="./teeworlds-game/build/teeworlds_srv"
 
 # Vérifier que le binaire existe
 if ! command -v "$TEEWORLDS_SERVER" &> /dev/null; then
@@ -23,7 +24,7 @@ if ! command -v "$TEEWORLDS_SERVER" &> /dev/null; then
 fi
 
 # Créer un fichier de config temporaire pour le serveur
-CFG="../configs/server.cfg"
+CFG="./configs/server.cfg"
 
 echo "Config serveur écrite dans: $CFG"
 echo "Démarrage du serveur..."
