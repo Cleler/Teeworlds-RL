@@ -1,18 +1,14 @@
 """
-Client econ (external console) pour communiquer avec le serveur Teeworlds.
+Client econ (external console) pour communiquer avec le serveur Teeworlds 0.7.
 
-Le protocole econ est un simple TCP text-based :
-- Connexion TCP au port econ
-- Envoi du password suivi de \n
-- Envoi de commandes texte suivies de \n
-- Réception de réponses texte ligne par ligne
+Spécificités TW 0.7 :
+- Auth : le serveur envoie "Enter password:" puis attend le password + \n
+- Les commandes comme "status" affichent leur résultat côté serveur,
+  PAS sur le socket econ. On ne peut pas les lire.
+- Avec ec_output_level 2, le serveur FORWARD les événements de jeu
+  (kills, joins, spawns) sur le socket econ. C'est notre source de données.
 
-Commandes utiles :
-- "status"       → liste des joueurs connectés
-- "say <msg>"    → message chat
-- "kick <id>"    → kick un joueur
-- "restart"      → restart la map
-- "shutdown"     → éteindre le serveur
+On se base donc sur le flux d'événements pour tracker l'état du jeu.
 """
 
 import socket
@@ -32,10 +28,10 @@ class EconClient:
         self.password = password
         self.read_timeout = read_timeout
         self.sock: Optional[socket.socket] = None
+        self._recv_buffer = ""
 
-        # État du jeu (mis à jour à chaque poll)
+        # État du jeu
         self.player_position = (0.0, 0.0)
-        self.player_health = 10
         self.player_alive = True
         self.kills = 0
         self.deaths = 0
@@ -46,7 +42,7 @@ class EconClient:
     # Connexion
     # ------------------------------------------------------------------
 
-    def connect(self):
+    def connect(self) -> bool:
         """Se connecte au serveur econ et s'authentifie."""
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -54,17 +50,23 @@ class EconClient:
             self.sock.connect((self.host, self.port))
             logger.info(f"Connecté à econ {self.host}:{self.port}")
 
-            # Lire le message de bienvenue
-            welcome = self._recv()
-            logger.debug(f"Econ welcome: {welcome}")
+            # ---- Attendre le prompt "Enter password:" ----
+            prompt = self._recv_until("Enter password:", timeout=5.0)
+            if "Enter password:" not in prompt:
+                logger.error(f"Prompt inattendu: {prompt!r}")
+                return False
+            logger.debug("Prompt password reçu")
 
-            # Envoyer le password
+            # ---- Envoyer le password ----
             self._send(self.password)
-            response = self._recv()
-            if "authentication successful" in response.lower():
+
+            # ---- Vérifier l'authentification ----
+            response = self._recv_until("Authentication", timeout=5.0)
+            if "Authentication successful" in response:
                 logger.info("Authentification econ réussie")
             else:
-                logger.warning(f"Réponse auth inattendue: {response}")
+                logger.error(f"Authentification échouée: {response!r}")
+                return False
 
             # Passer en mode non-bloquant pour les lectures régulières
             self.sock.settimeout(self.read_timeout)
@@ -84,7 +86,7 @@ class EconClient:
             self.sock = None
             logger.info("Déconnecté de econ")
 
-    def reconnect(self, delay: float = 2.0):
+    def reconnect(self, delay: float = 2.0) -> bool:
         """Reconnexion avec délai."""
         self.disconnect()
         time.sleep(delay)
@@ -101,7 +103,7 @@ class EconClient:
         self.sock.sendall((msg + "\n").encode("utf-8"))
 
     def _recv(self) -> str:
-        """Lit les données disponibles."""
+        """Lit les données disponibles (non-bloquant si timeout court)."""
         if not self.sock:
             return ""
         try:
@@ -113,78 +115,132 @@ class EconClient:
             logger.error(f"Erreur réception econ: {e}")
             return ""
 
-    def send_command(self, cmd: str) -> str:
-        """Envoie une commande et retourne la réponse."""
+    def _recv_until(self, marker: str, timeout: float = 5.0) -> str:
+        """Lit jusqu'à trouver un marqueur dans la réponse."""
+        if not self.sock:
+            return ""
+        old_timeout = self.sock.gettimeout()
+        self.sock.settimeout(0.5)
+
+        accumulated = ""
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            try:
+                data = self.sock.recv(4096).decode("utf-8", errors="replace")
+                accumulated += data
+                if marker in accumulated:
+                    break
+            except socket.timeout:
+                continue
+            except Exception as e:
+                logger.error(f"Erreur recv_until: {e}")
+                break
+
+        self.sock.settimeout(old_timeout)
+        return accumulated
+
+    def send_command(self, cmd: str):
+        """Envoie une commande. Note: la réponse n'est PAS renvoyée sur econ pour la plupart des commandes TW 0.7."""
         self._send(cmd)
-        time.sleep(self.read_timeout)
-        return self._recv()
 
     # ------------------------------------------------------------------
-    # Lecture de l'état du jeu
+    # Lecture de l'état du jeu (via flux d'événements)
     # ------------------------------------------------------------------
 
     def poll(self):
         """
         Lit les messages en attente et met à jour l'état interne.
         Appeler à chaque step de l'environnement.
+
+        Avec ec_output_level 2, le serveur forward les logs de jeu.
+        Format typique des lignes :
+            [timestamp][game]: kill killer='0:PlayerName' victim='1:BotName' weapon=5
+            [timestamp][game]: join player='0:PlayerName'
+            [timestamp][game]: leave player='0:PlayerName'
+            [timestamp][game]: start match type='DM' teamplay='0'
         """
         data = self._recv()
-        if data:
-            self._parse_server_output(data)
+        if not data:
+            return
 
-    def _parse_server_output(self, data: str):
-        """
-        Parse la sortie serveur pour extraire les événements de jeu.
+        # Accumuler avec le buffer (on peut recevoir des lignes partielles)
+        self._recv_buffer += data
 
-        Le serveur TW envoie des lignes comme :
-        - "[game]: kill killer='0:joueur1' victim='1:joueur2' weapon=0"
-        - "[game]: team_join player='0:nom' team=0"
-        - Sorties de "status" avec les infos joueurs
-
-        NOTE: Le format exact dépend de ta version de TW et de la config
-        ec_output_level. Tu devras adapter les regex ci-dessous.
-        """
-        for line in data.strip().split("\n"):
+        # Traiter les lignes complètes
+        while "\n" in self._recv_buffer:
+            line, self._recv_buffer = self._recv_buffer.split("\n", 1)
             line = line.strip()
-            if not line:
-                continue
+            if line:
+                self._parse_line(line)
 
-            logger.debug(f"econ: {line}")
+    def _parse_line(self, line: str):
+        """
+        Parse une ligne de log du serveur.
 
-            # Détecter un kill
-            kill_match = re.search(r"kill.*killer='(\d+):.*victim='(\d+):", line)
-            if kill_match:
-                killer_id = int(kill_match.group(1))
-                victim_id = int(kill_match.group(2))
-                # On suppose que notre agent est le joueur 0
-                if killer_id == 0:
-                    self.kills += 1
-                if victim_id == 0:
-                    self.deaths += 1
-                    self.player_alive = False
+        NOTE: Les formats exacts dépendent de ta version de TW.
+        Adapte les regex si nécessaire en regardant les logs réels
+        de ton serveur quand des événements se produisent.
+        """
+        logger.debug(f"econ: {line}")
 
-            # Détecter un respawn
-            if "spawn" in line.lower() and "'0:" in line:
-                self.player_alive = True
+        # --- Kill ---
+        # Patterns possibles (à adapter selon ta version) :
+        #   [time][game]: kill killer='0:Name' victim='1:Name' weapon=5
+        #   [time][game]: kill killer_id=0 victim_id=1 weapon=5
+        kill_match = re.search(
+            r"kill.*killer[_=]'?(\d+)[:\s].*victim[_=]'?(\d+)[:\s]", line
+        )
+        if kill_match:
+            killer_id = int(kill_match.group(1))
+            victim_id = int(kill_match.group(2))
+            logger.info(f"Kill détecté: {killer_id} → {victim_id}")
+            # On suppose que notre agent est le joueur ID 0
+            if killer_id == 0 and victim_id != 0:
+                self.kills += 1
+            if victim_id == 0:
+                self.deaths += 1
+                self.player_alive = False
+            return
 
-    def request_status(self) -> str:
-        """Demande le status et retourne la réponse brute."""
-        return self.send_command("status")
+        # --- Format alternatif de kill (plus simple) ---
+        # Certaines versions: "0:PlayerA killed 1:PlayerB with 5"
+        kill_alt = re.search(r"(\d+):\S+\s+killed\s+(\d+):", line)
+        if kill_alt:
+            killer_id = int(kill_alt.group(1))
+            victim_id = int(kill_alt.group(2))
+            logger.info(f"Kill détecté (alt): {killer_id} → {victim_id}")
+            if killer_id == 0 and victim_id != 0:
+                self.kills += 1
+            if victim_id == 0:
+                self.deaths += 1
+                self.player_alive = False
+            return
+
+        # --- Spawn / Respawn ---
+        if re.search(r"spawn.*'?0:", line, re.IGNORECASE):
+            self.player_alive = True
+
+        # --- Match start (après restart) ---
+        if "start match" in line:
+            logger.info("Nouvelle partie détectée")
+            self.player_alive = True
+
+    # ------------------------------------------------------------------
+    # Getters
+    # ------------------------------------------------------------------
 
     def get_position(self) -> tuple[float, float]:
         """
         Retourne la position du joueur.
 
-        NOTE IMPORTANTE: La commande "status" standard de TW ne retourne
-        pas la position. Pour avoir la position, tu as 2 options :
+        LIMITATION: econ sur TW 0.7 ne donne PAS la position.
+        Options pour l'obtenir :
+        1. Modifier le serveur pour logger la position à chaque tick
+        2. Parser les logs serveur (stdout) depuis un processus séparé
+        3. Ne pas utiliser la position (se baser uniquement sur l'image)
 
-        1. Utiliser un mod serveur qui expose la position
-           (ex: ajouter une commande custom "player_pos <id>")
-
-        2. Utiliser un serveur DDNet qui a des commandes étendues
-
-        Pour l'instant on retourne la dernière position connue.
-        Adapter _parse_server_output() selon ton serveur.
+        Pour l'instant retourne (0, 0). À implémenter selon ton approche.
         """
         return self.player_position
 
@@ -197,7 +253,6 @@ class EconClient:
         return k, d
 
     def is_player_dead(self) -> bool:
-        """Vérifie si le joueur est mort."""
         return not self.player_alive
 
     # ------------------------------------------------------------------
@@ -216,7 +271,3 @@ class EconClient:
     def say(self, message: str):
         """Envoie un message dans le chat."""
         self.send_command(f'say "{message}"')
-
-    def set_player_name(self, player_id: int, name: str):
-        """Change le nom d'un joueur (admin)."""
-        self.send_command(f'rename {player_id} "{name}"')
