@@ -26,8 +26,15 @@ class InputController:
         self.aim_radius = aim_radius
         self.screen_center = screen_center
         self.held_keys: Set[str] = set()
-        self.window_id = None
-
+        self.display_id = None
+    
+    def _run_xdotool(self, args: list):
+        """Exécute xdotool sur l'écran virtuel dédié à cet agent."""
+        if hasattr(self, 'display_id') and self.display_id is not None:
+            env = os.environ.copy()
+            env["DISPLAY"] = f":{self.display_id}"
+            subprocess.run(["xdotool"] + args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
     def set_screen_center(self, center_x: int, center_y: int):
         """Met à jour le centre de l'écran (si la fenêtre bouge)."""
         self.screen_center = (center_x, center_y)
@@ -90,13 +97,7 @@ class InputController:
         """Déplace la souris pour viser dans une direction."""
         target_x = self.screen_center[0] + int(aim_x * self.aim_radius)
         target_y = self.screen_center[1] + int(aim_y * self.aim_radius)
-        # pyautogui.moveTo(target_x, target_y, _pause=False)
-        if self.window_id:
-            # xdotool mousemove --window cible la position relative à la fenêtre
-            subprocess.run(
-                ["xdotool", "mousemove", "--window", str(self.window_id), str(target_x), str(target_y)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+        self._run_xdotool(["mousemove", str(target_x), str(target_y)])
     
     # ------------------------------------------------------------------
     # Gestion des touches
@@ -116,11 +117,10 @@ class InputController:
         if key not in self.held_keys:
             if self.window_id:
                 if key.startswith("mouse_"):
-                    btn = self._get_mouse_button(key)
-                    subprocess.run(["xdotool", "mousedown", "--window", str(self.window_id), btn], stdout=subprocess.DEVNULL)
+                    self._run_xdotool(["mousedown", self._get_mouse_button(key)])
                 else:
-                    subprocess.run(["xdotool", "keydown", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
-            self.held_keys.add(key)
+                    self._run_xdotool(["keydown", key])
+                self.held_keys.add(key)
 
     def _release_key(self, key: str):
         """Relâche une touche ou un bouton de souris."""
@@ -128,9 +128,9 @@ class InputController:
             if self.window_id:
                 if key.startswith("mouse_"):
                     btn = self._get_mouse_button(key)
-                    subprocess.run(["xdotool", "mouseup", "--window", str(self.window_id), btn], stdout=subprocess.DEVNULL)
+                    self._run_xdotool(["mouseup", self._get_mouse_button(key)])
                 else:
-                    subprocess.run(["xdotool", "keyup", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
+                    self._run_xdotool(["keyup", key])
             self.held_keys.discard(key)
 
     def _tap_key(self, key: str):
@@ -138,9 +138,9 @@ class InputController:
         if self.window_id:
             if key.startswith("mouse_"):
                 btn = self._get_mouse_button(key)
-                subprocess.run(["xdotool", "click", "--window", str(self.window_id), btn], stdout=subprocess.DEVNULL)
+                self._run_xdotool(["click", self._get_mouse_button(key)])
             else:
-                subprocess.run(["xdotool", "key", "--window", str(self.window_id), key], stdout=subprocess.DEVNULL)
+                self._run_xdotool(["key", key])
 
     def _update_hold(self, key: str, pressed: bool):
         """Met à jour l'état maintenu d'une touche/souris."""

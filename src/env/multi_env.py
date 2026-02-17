@@ -88,47 +88,79 @@ class MultiEnvManager:
         automatiquement au serveur.
         """
         logger.info(f"Lancement de {self.n_envs} clients Teeworlds...")
+        self.display_ids = []
 
+        # for i in range(self.n_envs):
+        #     row = i // self.grid_cols
+        #     col = i % self.grid_cols
+        #     x = col * self.cell_w
+        #     y = row * self.cell_h
+
+        #     # Lancer le client en mode fenêtré avec la bonne résolution
+        #     process = subprocess.Popen(
+        #         [
+        #             self.tw_binary,
+        #             # Mode fenêtré
+        #             "gfx_fullscreen", "0",
+        #             "gfx_borderless", "0",
+        #             # Résolution de la cellule
+        #             "gfx_screen_width", str(self.cell_w),
+        #             "gfx_screen_height", str(self.cell_h),
+        #             # Connexion auto au serveur
+        #             f"connect {self.server_ip}:{self.server_port}",
+        #         ],
+        #         stdout=subprocess.DEVNULL,
+        #         stderr=subprocess.DEVNULL,
+        #     )
+        #     self.client_processes.append(process)
+        #     logger.info(f"Client {i} lancé (PID={process.pid})")
+
+        #     # Petit délai pour laisser la fenêtre apparaître
+        #     time.sleep(connect_delay)
+
+        #     # Trouver la fenêtre et la positionner
+        #     window_id = self._find_newest_tw_window()
+        #     if window_id:
+        #         self.client_window_ids.append(window_id)
+        #         self._position_window(window_id, x, y, self.cell_w, self.cell_h)
+        #         logger.info(
+        #             f"Client {i}: fenêtre {window_id} → "
+        #             f"pos=({x},{y}) size={self.cell_w}x{self.cell_h}"
+        #         )
+        #     else:
+        #         logger.error(f"Client {i}: fenêtre non trouvée!")
+        #         self.client_window_ids.append(None)
         for i in range(self.n_envs):
-            row = i // self.grid_cols
-            col = i % self.grid_cols
-            x = col * self.cell_w
-            y = row * self.cell_h
+            display_id = 100 + i  # On utilise les écrans :100, :101, :102...
+            self.display_ids.append(display_id)
 
-            # Lancer le client en mode fenêtré avec la bonne résolution
-            process = subprocess.Popen(
+            # 1. Lancer un écran virtuel invisible
+            xvfb_proc = subprocess.Popen(
+                ["Xvfb", f":{display_id}", "-screen", "0", f"{self.cell_w}x{self.cell_h}x24"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            self.client_processes.append(xvfb_proc)
+            time.sleep(0.5) # Le temps que l'écran s'allume
+
+            # 2. Lancer Teeworlds DANS cet écran virtuel
+            env_vars = os.environ.copy()
+            env_vars["DISPLAY"] = f":{display_id}"
+
+            tw_proc = subprocess.Popen(
                 [
                     self.tw_binary,
-                    # Mode fenêtré
-                    "gfx_fullscreen", "0",
-                    "gfx_borderless", "0",
-                    # Résolution de la cellule
+                    "gfx_fullscreen", "1", # Plein écran virtuel !
                     "gfx_screen_width", str(self.cell_w),
                     "gfx_screen_height", str(self.cell_h),
-                    # Connexion auto au serveur
                     f"connect {self.server_ip}:{self.server_port}",
                 ],
+                env=env_vars,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            self.client_processes.append(process)
-            logger.info(f"Client {i} lancé (PID={process.pid})")
-
-            # Petit délai pour laisser la fenêtre apparaître
+            self.client_processes.append(tw_proc)
+            logger.info(f"Client {i} lancé sur l'écran caché DISPLAY=:{display_id}")
             time.sleep(connect_delay)
-
-            # Trouver la fenêtre et la positionner
-            window_id = self._find_newest_tw_window()
-            if window_id:
-                self.client_window_ids.append(window_id)
-                self._position_window(window_id, x, y, self.cell_w, self.cell_h)
-                logger.info(
-                    f"Client {i}: fenêtre {window_id} → "
-                    f"pos=({x},{y}) size={self.cell_w}x{self.cell_h}"
-                )
-            else:
-                logger.error(f"Client {i}: fenêtre non trouvée!")
-                self.client_window_ids.append(None)
 
     def _find_newest_tw_window(self) -> Optional[str]:
         """Trouve la fenêtre TW la plus récente non encore assignée."""
@@ -191,46 +223,55 @@ class MultiEnvManager:
             logger.error("Échec de connexion du EconClient partagé !")
             return
         
-        for i, window_id in enumerate(self.client_window_ids):
-            if window_id is None:
-                logger.warning(f"Env {i} ignoré: pas de fenêtre")
-                continue
+        # for i, window_id in enumerate(self.client_window_ids):
+        #     if window_id is None:
+        #         logger.warning(f"Env {i} ignoré: pas de fenêtre")
+        #         continue
 
-            row = i // self.grid_cols
-            col = i % self.grid_cols
-            x = col * self.cell_w
-            y = row * self.cell_h
+        #     row = i // self.grid_cols
+        #     col = i % self.grid_cols
+        #     x = col * self.cell_w
+        #     y = row * self.cell_h
 
-            # Créer une config spécifique à cet env
-            env_config = self._make_env_config(i, x, y)
+        #     # Créer une config spécifique à cet env
+        #     env_config = self._make_env_config(i, x, y)
 
-            # env = TeeWorldsEnv(env_config)
+        #     # env = TeeWorldsEnv(env_config)
+        #     env = TeeWorldsEnv(env_config, shared_econ=self.shared_econ, agent_id=i)
+
+        #     # Injecter le window_id directement au lieu de chercher
+        #     env.controller.window_id = window_id
+        #     env.controller.win_x = x
+        #     env.controller.win_y = y
+        #     env.controller.win_w = self.cell_w
+        #     env.controller.win_h = self.cell_h
+        #     env.controller.screen_center = (x + self.cell_w // 2, y + self.cell_h // 2)
+
+        #     # Configurer la capture pour cette cellule
+        #     env.capture.monitor = {
+        #         "top": y,
+        #         "left": x,
+        #         "width": self.cell_w,
+        #         "height": self.cell_h,
+        #     }
+        #     env.capture.start()
+
+        #     # Connexion econ (partagée ou séparée selon le setup)
+        #     # if not env.econ.connect():
+        #     #     logger.error(f"Env {i}: échec connexion econ")
+        #     #     continue
+
+        #     self.envs.append(env)
+        #     logger.info(f"Env {i} créé: fenêtre={window_id} capture=({x},{y},{self.cell_w},{self.cell_h})")
+        for i, display_id in enumerate(self.display_ids):
+            env_config = self._make_env_config(i, 0, 0)
             env = TeeWorldsEnv(env_config, shared_econ=self.shared_econ, agent_id=i)
-
-            # Injecter le window_id directement au lieu de chercher
-            env.controller.window_id = window_id
-            env.controller.win_x = x
-            env.controller.win_y = y
-            env.controller.win_w = self.cell_w
-            env.controller.win_h = self.cell_h
-            env.controller.screen_center = (x + self.cell_w // 2, y + self.cell_h // 2)
-
-            # Configurer la capture pour cette cellule
-            env.capture.monitor = {
-                "top": y,
-                "left": x,
-                "width": self.cell_w,
-                "height": self.cell_h,
-            }
-            env.capture.start()
-
-            # Connexion econ (partagée ou séparée selon le setup)
-            # if not env.econ.connect():
-            #     logger.error(f"Env {i}: échec connexion econ")
-            #     continue
-
+            
+            env.controller.display_id = display_id
+            env.controller.screen_center = (self.cell_w // 2, self.cell_h // 2)
+            env.capture.display_id = display_id
+            
             self.envs.append(env)
-            logger.info(f"Env {i} créé: fenêtre={window_id} capture=({x},{y},{self.cell_w},{self.cell_h})")
 
         logger.info(f"{len(self.envs)}/{self.n_envs} environnements prêts")
 
@@ -240,8 +281,8 @@ class MultiEnvManager:
         cfg = copy.deepcopy(self.config)
 
         cfg["capture"]["monitor"] = {
-            "top": y,
-            "left": x,
+            "top": 0,
+            "left": 0,
             "width": self.cell_w,
             "height": self.cell_h,
         }

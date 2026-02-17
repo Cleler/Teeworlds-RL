@@ -113,7 +113,8 @@ class ScreenCapture:
         tid = threading.current_thread().ident
         if tid not in self._thread_sct:
             import mss as mss_module
-            self._thread_sct[tid] = mss_module.mss()
+            disp = f":{self.display_id}" if getattr(self, 'display_id', None) else None
+            self._thread_sct[tid] = mss_module.mss(display=disp)
 
         sct = self._thread_sct[tid]
         raw = sct.grab(self.monitor)
