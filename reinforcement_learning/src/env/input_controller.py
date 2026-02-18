@@ -354,6 +354,8 @@ class InputController:
         self.display_id = None
         self.disp = None
         self.last_aim = None
+        
+        self._pending_release: Set[str] = set()
 
     def connect_display(self):
         """Initialise la connexion directe au serveur X11 virtuel."""
@@ -361,6 +363,7 @@ class InputController:
         self.disp = display.Display(display_name)
         self.held_keys.clear()
         self.last_aim = None
+        self._pending_release.clear()
 
     def set_screen_center(self, center_x: int, center_y: int):
         self.screen_center = (center_x, center_y)
@@ -437,53 +440,58 @@ class InputController:
     # ------------------------------------------------------------------
 
     def apply_action(self, direction: int, jump: int, fire: int,
-                     hook: int, weapon_switch: int, aim_x: float, aim_y: float):
+                 hook: int, weapon_switch: int, aim_x: float, aim_y: float):
 
         if not self.disp:
             self.connect_display()
 
-        # 1. MOUVEMENT (A / D) — hold until release
+        # 1. Relâcher les touches one-shot du tick PRÉCÉDENT
+        for key in list(self._pending_release):
+            self._release_key(key)
+        self._pending_release.clear()
+
+        # 2. MOUVEMENT — hold until release
         key_left, key_right = self.keys["left"], self.keys["right"]
-        if direction == 0:    # gauche
+        if direction == 0:
             self._hold_key(key_left)
             self._release_key(key_right)
-        elif direction == 2:  # droite
+        elif direction == 2:
             self._release_key(key_left)
             self._hold_key(key_right)
-        else:                 # neutre
+        else:
             self._release_key(key_left)
             self._release_key(key_right)
 
-        # 2. JUMP (space) — tap : 1 press = 1 saut
+        # 3. JUMP — one-shot : Press maintenant, Release au prochain tick
         if jump:
-            self._tap_key(self.keys["jump"])
+            self._hold_key(self.keys["jump"])
+            self._pending_release.add(self.keys["jump"])
 
-        # 3. FIRE (mouse_left) — tap : 1 click = 1 balle
-        #    Pas de hold : le jeu déclenche le tir sur l'événement Press,
-        #    maintenir le bouton ne tire pas en rafale dans TW.
+        # 4. FIRE — one-shot : Press maintenant, Release au prochain tick
         if fire:
-            self._tap_key(self.keys["fire"])
+            self._hold_key(self.keys["fire"])
+            self._pending_release.add(self.keys["fire"])
 
-        # 4. HOOK (mouse_right) — hold until release
-        #    _release_key envoie TOUJOURS le ButtonRelease à X11 (pas de garde
-        #    held_keys), donc le grappin se détache même après un reset/désync.
+        # 5. HOOK — hold until release
         self._update_hold(self.keys["hook"], bool(hook))
 
-        # 5. WEAPON SWITCH — tap (molette)
+        # 6. WEAPON SWITCH — scroll (ces événements sont edge-triggered, pas level)
         if weapon_switch == 1:
-            self._tap_key("mouse_scroll_up")
+            self._hold_key("mouse_scroll_up")
+            self._pending_release.add("mouse_scroll_up")
         elif weapon_switch == 2:
-            self._tap_key("mouse_scroll_down")
+            self._hold_key("mouse_scroll_down")
+            self._pending_release.add("mouse_scroll_down")
 
-        # 6. VISÉE — MotionNotify uniquement si la position change
+        # 7. VISÉE
         target_x = self.screen_center[0] + int(aim_x * self.aim_radius)
         target_y = self.screen_center[1] + int(aim_y * self.aim_radius)
         if self.last_aim != (target_x, target_y):
             xtest.fake_input(self.disp, X.MotionNotify, x=target_x, y=target_y)
             self.last_aim = (target_x, target_y)
 
-        # Flush tout en une seule fois vers Xvfb
         self.disp.sync()
+
 
     # ------------------------------------------------------------------
     # Nettoyage
@@ -497,6 +505,9 @@ class InputController:
         """
         if not self.disp:
             return
+        for key in list(self._pending_release):
+            self._release_key(key)
+        self._pending_release.clear()
         for key in [
             self.keys.get("left"),
             self.keys.get("right"),
