@@ -33,7 +33,7 @@ input:
 
 env:
   tick_rate: 50
-  max_steps: 3000
+  max_steps: 150000
   reset_delay: 3.0
 
 reward:

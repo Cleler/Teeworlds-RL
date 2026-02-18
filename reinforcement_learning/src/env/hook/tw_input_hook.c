@@ -110,12 +110,16 @@ static void generate_events(void) {
         g_prev_dir = s.direction;
     }
 
-    /* Jump — hold : KEYDOWN quand 0→1, KEYUP quand 1→0 */
-    if (s.jump != g_prev_jump) {
-        if (s.jump) push_keydown(SDLK_SPACE);
-        else        push_keyup(SDLK_SPACE);
-        g_prev_jump = s.jump;
+    /* APRÈS — tap sur front montant + release différé au step suivant */
+    if (s.jump && !g_prev_jump) {
+        push_keydown(SDLK_SPACE);
+        /* Le KEYUP sera généré au prochain step (quand prev_jump redevient 0) */
     }
+    if (!s.jump && g_prev_jump) {
+        push_keyup(SDLK_SPACE);
+    }
+    g_prev_jump = s.jump;
+
 
     /* Fire — tap sur front montant uniquement */
     if (s.fire && !g_prev_fire) {
