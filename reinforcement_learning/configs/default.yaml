@@ -32,7 +32,7 @@ input:
     hook: "mouse_right"
 
 env:
-  tick_rate: 30
+  tick_rate: 50
   max_steps: 3000
   reset_delay: 3.0
 
