@@ -20,6 +20,7 @@ import time
 import math
 import logging
 import os
+import threading
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
@@ -80,6 +81,7 @@ class MultiEnvManager:
     # Lancement des clients
     # ------------------------------------------------------------------
 
+
     def launch_clients(self, connect_delay: float = 2.0):
         """
         Lance N clients TW et les positionne en grille.
@@ -88,6 +90,11 @@ class MultiEnvManager:
         automatiquement au serveur.
         """
         logger.info(f"Lancement de {self.n_envs} clients Teeworlds...")
+        
+        def _log_hook(proc, agent_id):
+            for line in proc.stderr:
+                logger.info(f"[hook/{agent_id}] {line.decode().rstrip()}")
+
         self.display_ids = []
 
         # for i in range(self.n_envs):
@@ -145,6 +152,12 @@ class MultiEnvManager:
             # 2. Lancer Teeworlds DANS cet écran virtuel
             env_vars = os.environ.copy()
             env_vars["DISPLAY"] = f":{display_id}"
+            hook_path = os.path.join(
+                os.path.dirname(__file__),  # src/env/
+                "hook", "tw_input_hook.so"
+            )
+            env_vars["TW_AGENT_ID"] = str(i)
+            env_vars["LD_PRELOAD"]  = hook_path
 
             tw_proc = subprocess.Popen(
                 [
@@ -155,15 +168,12 @@ class MultiEnvManager:
                     f"player_name Bot_{i}",
                     f"connect {self.server_ip}:{self.server_port}",
                 ],
-                env = {
-                    **env_vars,
-                    "TW_AGENT_ID": str(i),
-                    "LD_PRELOAD": "inject/tw_input_hook.so"
-                },
+                env = env_vars,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
             self.client_processes.append(tw_proc)
+            threading.Thread(target=_log_hook, args=(tw_proc, i), daemon=True).start()
             logger.info(f"Client {i} lancé sur l'écran caché DISPLAY=:{display_id}")
             time.sleep(connect_delay)
 
