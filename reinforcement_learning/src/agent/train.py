@@ -13,7 +13,7 @@ import logging
 import numpy as np
 import torch
 import cv2
-import requests
+# import requests
 from concurrent.futures import ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
 
@@ -163,7 +163,7 @@ def train_multi(config: dict):
 
     train_cfg = config["training"]
     multi_cfg = config.get("multi_env", {})
-    visualizer_cfg = config.get("visualizer", {})
+    # visualizer_cfg = config.get("visualizer", {})
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Device: {device}")
 
@@ -228,24 +228,24 @@ def train_multi(config: dict):
     # Reset initial
     obs_list = manager.reset_all()
 
-    visualizer_ip = visualizer_cfg.get("ip", "192.168.22.116")
-    visualizer_url = f"http://{visualizer_ip}:5000/update/"
+    # visualizer_ip = visualizer_cfg.get("ip", "192.168.22.116")
+    # visualizer_url = f"http://{visualizer_ip}:5000/update/"
     
-    network_executor = ThreadPoolExecutor(max_workers=4)
+    # network_executor = ThreadPoolExecutor(max_workers=4)
     
-    def send_frame_to_visualizer(bot_id, frame):
-        try:
-            if len(frame.shape) == 3 and frame.shape[2] == 1:
-                frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-            ret, buffer = cv2.imencode('.jpg', frame)
+    # def send_frame_to_visualizer(bot_id, frame):
+    #     try:
+    #         if len(frame.shape) == 3 and frame.shape[2] == 1:
+    #             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    #         ret, buffer = cv2.imencode('.jpg', frame)
             
-            if ret:
-                requests.post(f"{visualizer_url}{bot_id}", data=buffer.tobytes(), timeout=2.0)
-            else:
-                print(f"⚠️ Erreur: OpenCV n'a pas pu encoder l'image du bot {bot_id}")
+    #         if ret:
+    #             requests.post(f"{visualizer_url}{bot_id}", data=buffer.tobytes(), timeout=2.0)
+    #         else:
+    #             print(f"⚠️ Erreur: OpenCV n'a pas pu encoder l'image du bot {bot_id}")
                 
-        except Exception as e:
-            print(f"⚠️ Erreur réseau (Visualizer Bot {bot_id}) : {e}")
+    #     except Exception as e:
+    #         print(f"⚠️ Erreur réseau (Visualizer Bot {bot_id}) : {e}")
                     
     logger.info(f"Début de l'entraînement ({total_timesteps} timesteps, {actual_n} envs)...")
 
@@ -295,9 +295,9 @@ def train_multi(config: dict):
 
             obs_list = new_obs_list
             
-            for i, obs in enumerate(obs_list):
-                hd_frame = manager.envs[i].capture.grab_raw()
-                network_executor.submit(send_frame_to_visualizer, i, hd_frame)
+            # for i, obs in enumerate(obs_list):
+            #     hd_frame = manager.envs[i].capture.grab_raw()
+            #     network_executor.submit(send_frame_to_visualizer, i, hd_frame)
                 
             print("="*50)
 

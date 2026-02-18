@@ -142,6 +142,7 @@ class Ar_2(nn.Module):
             "jump":   self.head_jump(x),
             "hook":   self.head_hook(x),
             "fire":   self.head_fire(x),
+            "weapon":    self.head_weapon(x),
             "aim":    self.head_aim(x),
         }
     
