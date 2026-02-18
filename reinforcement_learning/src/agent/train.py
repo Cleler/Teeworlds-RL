@@ -301,13 +301,12 @@ def train_multi(config: dict):
                 
             print("="*50)
 
-            print("len_buffer", len(buffer.buffer))
             print("type_buffer", type(buffer))
-            print("buffer_pos : ", buffer.buffer[-1][0]['position'])
-            print("buffer_fire : ", buffer.buffer[-1][1]['fire'])
-            print("buffer_aim : ", buffer.buffer[-1][1]['aim'])
-            print("buffer_reward : ", buffer.buffer[-1][2])
-            print("buffer_next_state : ", buffer.buffer[-1][3]['position'])
+            print("buffer_pos : ", buffer.positions)
+            #print("buffer_actions : ", buffer.actions)
+            print("buffer_aim : ", buffer.aim_targets)
+            print("buffer_reward : ", buffer.rewards)
+            print("buffer_next_state : ", buffer.next_positions)
             #print("buffer_aim : ", buffer.buffer[0]['aim'])
             print(min_buffer_size)
             # ---- Entraînement ----
@@ -388,6 +387,9 @@ def train_single(config: dict):
     try:
         while global_step < total_timesteps:
             obs, info = env.reset()
+            print("RAW position:", obs["position"])  # Is it actually [0,0] from the env?
+            print("RAW image shape:", obs["image"].shape)
+            print("RAW image min/max:", obs["image"].min(), obs["image"].max())
             episode_reward = 0
             done = False
             episode += 1

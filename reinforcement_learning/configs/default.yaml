@@ -32,7 +32,7 @@ input:
     hook: "mouse_right"
 
 env:
-  tick_rate: 50
+  tick_rate: 1
   max_steps: 3000
   reset_delay: 3.0
 
@@ -72,7 +72,7 @@ training:
   gamma: 0.99
   eps_start: 1.0
   eps_end: 0.05
-  eps_decay: 50_000
+  eps_decay: 100
   buffer_size: 100_000
   min_buffer_size: 100
   target_update: 1000

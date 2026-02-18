@@ -297,16 +297,38 @@ class MultiEnvManager:
     # Interface parallèle
     # ------------------------------------------------------------------
 
+    # def reset_all(self) -> list[dict]:
+    #     """Reset tous les envs en parallèle."""
+    #     if hasattr(self, 'shared_econ'):
+    #         self.shared_econ.restart_round()
+    #         self.shared_econ.poll()
+    #     def _reset(env):
+    #         return env.reset()
+
+    #     futures = [self.executor.submit(_reset, env) for env in self.envs]
+    #     results = [f.result() for f in futures]
+        
+    #     return [obs for obs, info in results]
+
     def reset_all(self) -> list[dict]:
         """Reset tous les envs en parallèle."""
         if hasattr(self, 'shared_econ'):
             self.shared_econ.restart_round()
             self.shared_econ.poll()
+
         def _reset(env):
+            ret = env.reset()
+            obs, info = ret
+            print(f"[RESET] env={id(env)}")
+            print(f"  position : {obs['position']}")
+            print(f"  image shape : {obs['image'].shape}")
+            print(f"  image min/max : {obs['image'].min()} / {obs['image'].max()}")
+            print(f"  info : {info}")
             return env.reset()
 
         futures = [self.executor.submit(_reset, env) for env in self.envs]
         results = [f.result() for f in futures]
+
         return [obs for obs, info in results]
 
     def step_all(self, actions):
