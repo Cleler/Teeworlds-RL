@@ -205,10 +205,10 @@ class TeeWorldsEnv(gym.Env):
 
     def _get_observation(self) -> dict:
         image = self.capture.grab()
-        x, y = self.econ.get_position(self.agent_id)
+        pos = self.econ.get_position(self.agent_id)
         return {
-            "image": self.capture.grab(),
-            "position": np.array(self.econ.get_position(self.agent_id), dtype=np.float32),
+            "image": image,
+            "position": np.array(pos, dtype=np.float32),
         }
 
     def _compute_reward(self) -> float:

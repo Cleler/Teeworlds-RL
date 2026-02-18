@@ -450,7 +450,8 @@ class EconClient:
     
     def get_position(self, agent_id: int = 0) -> tuple[float, float]:
         pid = self.get_real_pid(agent_id)
-        return self.players[pid]["pos"]
+        self._ensure_player(pid)
+        return self.players[pid].get("pos", (0.0, 0.0))
     
     def get_real_pid(self, agent_id: int) -> int:
         return self.agent_to_pid.get(agent_id, agent_id)
