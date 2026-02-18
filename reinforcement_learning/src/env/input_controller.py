@@ -324,195 +324,313 @@
 #         return math.cos(angle_rad), math.sin(angle_rad)
 
 
+# # ================================================================================================================================
+
+# """
+# Injection d'inputs native via python-xlib.
+# """
+
+# import math
+# import logging
+# from typing import Set
+
+# try:
+#     from Xlib import X, display, XK
+#     from Xlib.ext import xtest
+# except ImportError:
+#     raise ImportError("Veuillez installer python-xlib : pip install python-xlib")
+
+# logger = logging.getLogger(__name__)
+
+
+# class InputController:
+#     def __init__(self, key_mapping: dict, aim_radius: int = 300,
+#                  screen_center: tuple[int, int] = (400, 300)):
+#         self.keys = key_mapping
+#         self.aim_radius = aim_radius
+#         self.screen_center = screen_center
+#         self.held_keys: Set[str] = set()
+
+#         self.display_id = None
+#         self.disp = None
+#         self.last_aim = None
+        
+#     def connect_display(self):
+#         """Initialise la connexion directe au serveur X11 virtuel."""
+#         display_name = f":{self.display_id}" if getattr(self, "display_id", None) is not None else None
+#         self.disp = display.Display(display_name)
+#         self.held_keys.clear()
+#         self.last_aim = None
+        
+#     def set_screen_center(self, center_x: int, center_y: int):
+#         self.screen_center = (center_x, center_y)
+
+#     # ------------------------------------------------------------------
+#     # Conversion des touches
+#     # ------------------------------------------------------------------
+
+#     def _get_keycode(self, key_char: str):
+#         if key_char == "space":
+#             keysym = XK.XK_space
+#         else:
+#             keysym = XK.string_to_keysym(key_char)
+#         # return self.disp.keysym_to_keycode(keysym)
+#         keycode = self.disp.keysym_to_keycode(keysym)
+#         print(f"Key {key_char} -> keysym {keysym} -> keycode {keycode}")
+#         return keycode
+
+
+#     def _get_mouse_btn(self, key: str) -> int:
+#         if key == "mouse_left":        return 1
+#         if key == "mouse_middle":      return 2
+#         if key == "mouse_right":       return 3
+#         if key == "mouse_scroll_up":   return 4
+#         if key == "mouse_scroll_down": return 5
+#         return 1
+
+#     # ------------------------------------------------------------------
+#     # Primitives X11
+#     # ------------------------------------------------------------------
+
+#     def _hold_key(self, key: str):
+#         """Press uniquement si pas déjà maintenu — évite les repeat X11."""
+#         if key not in self.held_keys:
+#             if key.startswith("mouse_"):
+#                 xtest.fake_input(self.disp, X.ButtonPress, self._get_mouse_btn(key))
+#             else:
+#                 xtest.fake_input(self.disp, X.KeyPress, self._get_keycode(key))
+#             self.held_keys.add(key)
+
+#     def _release_key(self, key: str):
+#         """
+#         Release TOUJOURS envoyé à X11, que held_keys soit synchronisé ou non.
+#         Sans ça, si held_keys se vide (reset, exception...) sans que X11 reçoive
+#         le Release, la touche reste physiquement enfoncée côté Xvfb indéfiniment.
+#         """
+#         if key.startswith("mouse_"):
+#             xtest.fake_input(self.disp, X.ButtonRelease, self._get_mouse_btn(key))
+#         else:
+#             xtest.fake_input(self.disp, X.KeyRelease, self._get_keycode(key))
+#         self.held_keys.discard(key)
+
+#     def _tap_key(self, key: str):
+#         """
+#         Press + Release immédiat.
+#         Utilisé pour : fire (1 click = 1 balle), jump (1 press = 1 saut),
+#         weapon switch (scroll).
+#         Ces actions sont one-shot : le jeu réagit à l'événement Press lui-même,
+#         pas à la durée du maintien.
+#         """
+#         if key.startswith("mouse_"):
+#             btn = self._get_mouse_btn(key)
+#             xtest.fake_input(self.disp, X.ButtonPress, btn)
+#             xtest.fake_input(self.disp, X.ButtonRelease, btn)
+#         else:
+#             kc = self._get_keycode(key)
+#             xtest.fake_input(self.disp, X.KeyPress, kc)
+#             xtest.fake_input(self.disp, X.KeyRelease, kc)
+
+#     def _update_hold(self, key: str, pressed: bool):
+#         if pressed:
+#             self._hold_key(key)
+#         else:
+#             self._release_key(key)
+
+#     # ------------------------------------------------------------------
+#     # Application de l'action
+#     # ------------------------------------------------------------------
+
+#     def apply_action(self, direction: int, jump: int, fire: int,
+#                  hook: int, weapon_switch: int, aim_x: float, aim_y: float):
+#         if not self.disp:
+#             self.connect_display()
+
+#         self._release_key(self.keys["jump"])
+
+#         # 1. MOUVEMENT — hold until release
+#         key_left, key_right = self.keys["left"], self.keys["right"]
+#         if direction == 0:
+#             self._hold_key(key_left)
+#             self._release_key(key_right)
+#         elif direction == 2:
+#             self._release_key(key_left)
+#             self._hold_key(key_right)
+#         else:
+#             self._release_key(key_left)
+#             self._release_key(key_right)
+
+#         # 2. JUMP — tap direct, exactement comme fire
+#         #    Si fire marche en tap souris, jump doit marcher en tap clavier
+#         if jump:
+#             self._hold_key(self.keys["jump"])
+#         # self._update_hold(self.keys["jump"], bool(jump))
+        
+#         # 3. FIRE — tap direct
+#         if fire:
+#             self._tap_key(self.keys["fire"])
+
+#         # 4. HOOK — hold until release
+#         self._update_hold(self.keys["hook"], bool(hook))
+
+#         # 5. WEAPON SWITCH — tap
+#         if weapon_switch == 1:
+#             self._tap_key("mouse_scroll_up")
+#         elif weapon_switch == 2:
+#             self._tap_key("mouse_scroll_down")
+
+#         # 6. VISÉE
+#         target_x = self.screen_center[0] + int(aim_x * self.aim_radius)
+#         target_y = self.screen_center[1] + int(aim_y * self.aim_radius)
+#         if self.last_aim != (target_x, target_y):
+#             xtest.fake_input(self.disp, X.MotionNotify, x=target_x, y=target_y)
+#             self.last_aim = (target_x, target_y)
+
+#         self.disp.sync()
+
+#     # ------------------------------------------------------------------
+#     # Nettoyage
+#     # ------------------------------------------------------------------
+
+#     def release_all(self):
+#         """
+#         Relâche toutes les touches — appeler à chaque mort/reset.
+#         On force le Release de toutes les touches connues explicitement
+#         plutôt que de se fier au contenu de held_keys qui peut être désynchronisé.
+#         """
+#         if not self.disp:
+#             return
+#         for key in [
+#             self.keys.get("left"),
+#             self.keys.get("right"),
+#             self.keys.get("jump"),
+#             self.keys.get("fire"),
+#             self.keys.get("hook"),
+#         ]:
+#             if key:
+#                 self._release_key(key)
+#         self.disp.sync()
+#         self.held_keys.clear()
+
+#     # ------------------------------------------------------------------
+
+#     @staticmethod
+#     def aim_angle_to_xy(angle_rad: float) -> tuple[float, float]:
+#         return math.cos(angle_rad), math.sin(angle_rad)
 
 
 """
-Injection d'inputs native via python-xlib.
+InputController via shared memory POSIX + hook SDL (LD_PRELOAD).
+
+Remplace l'ancien contrôleur X11/xdotool.
+Même interface publique qu'avant : apply_action(), release_all().
+
+Python écrit dans /dev/shm/tw_input_<agent_id>.
+Le hook tw_input_hook.so intercepte SDL_PollEvent dans le client TW
+et génère les vrais SDL_Event correspondants.
+
+Prérequis :
+    cd hook/ && make
+    Lancer TW avec :
+        TW_AGENT_ID=<id> LD_PRELOAD=/path/to/tw_input_hook.so teeworlds ...
 """
 
-import math
-import logging
-from typing import Set
+import mmap
+import os
+import struct
 
-try:
-    from Xlib import X, display, XK
-    from Xlib.ext import xtest
-except ImportError:
-    raise ImportError("Veuillez installer python-xlib : pip install python-xlib")
-
-logger = logging.getLogger(__name__)
+# Doit correspondre exactement à tw_shm.h (__attribute__((packed)))
+# = : natif sans padding
+# i i i i i f f i i Q
+# dir jump fire hook wpn aim_x aim_y win_w win_h seq
+_FMT  = "=iiiiiiffiiQ"
+_SIZE = struct.calcsize(_FMT)
 
 
 class InputController:
-    def __init__(self, key_mapping: dict, aim_radius: int = 300,
-                 screen_center: tuple[int, int] = (400, 300)):
-        self.keys = key_mapping
-        self.aim_radius = aim_radius
-        self.screen_center = screen_center
-        self.held_keys: Set[str] = set()
+    def __init__(self, key_mapping: dict = None,
+                 aim_radius: int = 300,
+                 screen_center: tuple = (400, 300),
+                 agent_id: int = 0,
+                 win_w: int = 800,
+                 win_h: int = 600):
+        """
+        key_mapping, aim_radius, screen_center : ignorés (compat ancienne API)
+        agent_id : doit correspondre à TW_AGENT_ID du client TW
+        win_w/h  : résolution de la fenêtre TW (pour le calcul de visée côté hook)
+        """
+        self.agent_id = agent_id
+        self.win_w    = win_w
+        self.win_h    = win_h
 
+        self._path = f"/dev/shm/tw_input_{agent_id}"
+        self._fd   = -1
+        self._mm   = None
+        self._seq  = 0
+
+        # Pour compatibilité avec l'ancien code qui accède à ces attributs
         self.display_id = None
-        self.disp = None
-        self.last_aim = None
-        
-    def connect_display(self):
-        """Initialise la connexion directe au serveur X11 virtuel."""
-        display_name = f":{self.display_id}" if getattr(self, "display_id", None) is not None else None
-        self.disp = display.Display(display_name)
-        self.held_keys.clear()
-        self.last_aim = None
-        
-    def set_screen_center(self, center_x: int, center_y: int):
-        self.screen_center = (center_x, center_y)
 
-    # ------------------------------------------------------------------
-    # Conversion des touches
-    # ------------------------------------------------------------------
+    # ── Connexion ─────────────────────────────────────────────────────
 
-    def _get_keycode(self, key_char: str):
-        if key_char == "space":
-            keysym = XK.XK_space
-        else:
-            keysym = XK.string_to_keysym(key_char)
-        # return self.disp.keysym_to_keycode(keysym)
-        keycode = self.disp.keysym_to_keycode(keysym)
-        print(f"Key {key_char} -> keysym {keysym} -> keycode {keycode}")
-        return keycode
+    def connect_display(self, display_id=None):
+        """Remplace l'ancien connect_display — ouvre la shared memory."""
+        self.display_id = display_id
+        self._fd = os.open(self._path, os.O_CREAT | os.O_RDWR, 0o666)
+        os.ftruncate(self._fd, _SIZE)
+        self._mm = mmap.mmap(self._fd, _SIZE,
+                             mmap.MAP_SHARED,
+                             mmap.PROT_READ | mmap.PROT_WRITE)
+        self._write(0, 0, 0, 0, 0, 0.0, 0.0, self.win_w, self.win_h, 0)
 
+    def close(self):
+        if self._mm:
+            self.release_all()
+            self._mm.close()
+            self._mm = None
+        if self._fd >= 0:
+            os.close(self._fd)
+            self._fd = -1
+        try:
+            os.unlink(self._path)
+        except FileNotFoundError:
+            pass
 
-    def _get_mouse_btn(self, key: str) -> int:
-        if key == "mouse_left":        return 1
-        if key == "mouse_middle":      return 2
-        if key == "mouse_right":       return 3
-        if key == "mouse_scroll_up":   return 4
-        if key == "mouse_scroll_down": return 5
-        return 1
-
-    # ------------------------------------------------------------------
-    # Primitives X11
-    # ------------------------------------------------------------------
-
-    def _hold_key(self, key: str):
-        """Press uniquement si pas déjà maintenu — évite les repeat X11."""
-        if key not in self.held_keys:
-            if key.startswith("mouse_"):
-                xtest.fake_input(self.disp, X.ButtonPress, self._get_mouse_btn(key))
-            else:
-                xtest.fake_input(self.disp, X.KeyPress, self._get_keycode(key))
-            self.held_keys.add(key)
-
-    def _release_key(self, key: str):
-        """
-        Release TOUJOURS envoyé à X11, que held_keys soit synchronisé ou non.
-        Sans ça, si held_keys se vide (reset, exception...) sans que X11 reçoive
-        le Release, la touche reste physiquement enfoncée côté Xvfb indéfiniment.
-        """
-        if key.startswith("mouse_"):
-            xtest.fake_input(self.disp, X.ButtonRelease, self._get_mouse_btn(key))
-        else:
-            xtest.fake_input(self.disp, X.KeyRelease, self._get_keycode(key))
-        self.held_keys.discard(key)
-
-    def _tap_key(self, key: str):
-        """
-        Press + Release immédiat.
-        Utilisé pour : fire (1 click = 1 balle), jump (1 press = 1 saut),
-        weapon switch (scroll).
-        Ces actions sont one-shot : le jeu réagit à l'événement Press lui-même,
-        pas à la durée du maintien.
-        """
-        if key.startswith("mouse_"):
-            btn = self._get_mouse_btn(key)
-            xtest.fake_input(self.disp, X.ButtonPress, btn)
-            xtest.fake_input(self.disp, X.ButtonRelease, btn)
-        else:
-            kc = self._get_keycode(key)
-            xtest.fake_input(self.disp, X.KeyPress, kc)
-            xtest.fake_input(self.disp, X.KeyRelease, kc)
-
-    def _update_hold(self, key: str, pressed: bool):
-        if pressed:
-            self._hold_key(key)
-        else:
-            self._release_key(key)
-
-    # ------------------------------------------------------------------
-    # Application de l'action
-    # ------------------------------------------------------------------
+    # ── Interface publique ────────────────────────────────────────────
 
     def apply_action(self, direction: int, jump: int, fire: int,
-                 hook: int, weapon_switch: int, aim_x: float, aim_y: float):
-        if not self.disp:
-            self.connect_display()
+                     hook: int, weapon_switch: int,
+                     aim_x: float, aim_y: float):
+        """
+        Même signature qu'avant.
 
-        self._release_key(self.keys["jump"])
-
-        # 1. MOUVEMENT — hold until release
-        key_left, key_right = self.keys["left"], self.keys["right"]
-        if direction == 0:
-            self._hold_key(key_left)
-            self._release_key(key_right)
-        elif direction == 2:
-            self._release_key(key_left)
-            self._hold_key(key_right)
-        else:
-            self._release_key(key_left)
-            self._release_key(key_right)
-
-        # 2. JUMP — tap direct, exactement comme fire
-        #    Si fire marche en tap souris, jump doit marcher en tap clavier
-        if jump:
-            self._hold_key(self.keys["jump"])
-        # self._update_hold(self.keys["jump"], bool(jump))
-        
-        # 3. FIRE — tap direct
-        if fire:
-            self._tap_key(self.keys["fire"])
-
-        # 4. HOOK — hold until release
-        self._update_hold(self.keys["hook"], bool(hook))
-
-        # 5. WEAPON SWITCH — tap
-        if weapon_switch == 1:
-            self._tap_key("mouse_scroll_up")
-        elif weapon_switch == 2:
-            self._tap_key("mouse_scroll_down")
-
-        # 6. VISÉE
-        target_x = self.screen_center[0] + int(aim_x * self.aim_radius)
-        target_y = self.screen_center[1] + int(aim_y * self.aim_radius)
-        if self.last_aim != (target_x, target_y):
-            xtest.fake_input(self.disp, X.MotionNotify, x=target_x, y=target_y)
-            self.last_aim = (target_x, target_y)
-
-        self.disp.sync()
-
-    # ------------------------------------------------------------------
-    # Nettoyage
-    # ------------------------------------------------------------------
+        direction     : 0=gauche, 1=neutre, 2=droite  → converti en -1/0/1
+        jump          : 0 ou 1
+        fire          : 0 ou 1
+        hook          : 0 ou 1
+        weapon_switch : 0=rien, 1=scroll_up, 2=scroll_down
+        aim_x, aim_y  : [-1.0, 1.0]
+        """
+        dir_tw = direction - 1   # 0→-1  1→0  2→+1
+        self._seq += 1
+        self._write(dir_tw, int(jump), int(fire), int(hook),
+                    int(weapon_switch), float(aim_x), float(aim_y),
+                    self.win_w, self.win_h, self._seq)
 
     def release_all(self):
-        """
-        Relâche toutes les touches — appeler à chaque mort/reset.
-        On force le Release de toutes les touches connues explicitement
-        plutôt que de se fier au contenu de held_keys qui peut être désynchronisé.
-        """
-        if not self.disp:
+        """Remet tout à zéro — appeler à chaque mort/reset."""
+        self._seq += 1
+        self._write(0, 0, 0, 0, 0, 0.0, 0.0,
+                    self.win_w, self.win_h, self._seq)
+
+    # ── Internal ──────────────────────────────────────────────────────
+
+    def _write(self, direction, jump, fire, hook, weapon,
+               aim_x, aim_y, win_w, win_h, seq):
+        if self._mm is None:
             return
-        for key in [
-            self.keys.get("left"),
-            self.keys.get("right"),
-            self.keys.get("jump"),
-            self.keys.get("fire"),
-            self.keys.get("hook"),
-        ]:
-            if key:
-                self._release_key(key)
-        self.disp.sync()
-        self.held_keys.clear()
-
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def aim_angle_to_xy(angle_rad: float) -> tuple[float, float]:
-        return math.cos(angle_rad), math.sin(angle_rad)
+        data = struct.pack(_FMT,
+                           direction, jump, fire, hook, weapon,
+                           aim_x, aim_y, win_w, win_h, seq)
+        self._mm.seek(0)
+        self._mm.write(data)
+        self._mm.flush()
