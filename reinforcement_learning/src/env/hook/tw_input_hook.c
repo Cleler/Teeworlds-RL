@@ -1,17 +1,25 @@
 /**
  * tw_input_hook.c
  *
- * Hooke trois fonctions SDL2 :
- *   - SDL_PollEvent        → événements one-shot (fire, wheel, aim)
- *   - SDL_GetKeyboardState → état continu clavier (move, jump)
- *   - SDL_GetMouseState    → état continu souris  (hook)
+ * Hooke SDL2 pour injecter les inputs dans Teeworlds.
+ *
+ * Après analyse :
+ *   - Fire / weapon switch marchent via SDL_PollEvent (one-shot events)
+ *   - Move / jump NE marchent PAS via SDL_GetKeyboardState
+ *     → TW lit ses bindings via KEYDOWN/KEYUP events dans SDL_PollEvent
+ *   - Aim NE marche PAS via SDL_GetMouseState ni SDL_MOUSEMOTION
+ *     → TW utilise SDL_GetRelativeMouseState (mode souris relative)
+ *
+ * Solution :
+ *   - Move / jump → KEYDOWN/KEYUP dans la file SDL_PollEvent
+ *   - Fire         → MOUSEBUTTONDOWN/UP one-shot
+ *   - Hook         → MOUSEBUTTONDOWN/UP sur edge
+ *   - Weapon       → MOUSEWHEEL one-shot
+ *   - Aim          → hook SDL_GetRelativeMouseState
  *
  * Compilation :
  *   gcc -shared -fPIC -O2 -o tw_input_hook.so tw_input_hook.c \
  *       -ldl -lrt $(sdl2-config --cflags --libs)
- *
- * Lancement :
- *   TW_AGENT_ID=0 LD_PRELOAD=/path/to/tw_input_hook.so teeworlds ...
  */
 
 #define _GNU_SOURCE
@@ -29,16 +37,21 @@
 static TWInputShm *g_shm     = NULL;
 static uint64_t    g_prev_seq = 0;
 
-/* ── Edge detection pour les one-shot ───────────────────────────── */
+/* ── État précédent pour edge detection ──────────────────────────── */
+static int32_t g_prev_dir  = 0;
+static int32_t g_prev_jump = 0;
 static int32_t g_prev_fire = 0;
 static int32_t g_prev_hook = 0;
 static int32_t g_prev_wpn  = 0;
 
-/* ── Faux état clavier retourné par SDL_GetKeyboardState ─────────── */
-static Uint8 g_fake_keys[512] = {0};
+/* ── Aim relatif accumulé ────────────────────────────────────────── */
+/* TW lit SDL_GetRelativeMouseState frame par frame.
+   On calcule le delta depuis la position cible précédente. */
+static float g_prev_aim_x = 0.0f;
+static float g_prev_aim_y = 0.0f;
 
-/* ── File d'événements one-shot ──────────────────────────────────── */
-#define Q_SIZE 32
+/* ── File d'événements ───────────────────────────────────────────── */
+#define Q_SIZE 64
 static SDL_Event g_queue[Q_SIZE];
 static int g_q_head = 0, g_q_tail = 0;
 
@@ -55,11 +68,31 @@ static int q_pop(SDL_Event *e) {
     return 1;
 }
 
+/* ── Helpers ─────────────────────────────────────────────────────── */
+static void push_keydown(SDL_Scancode sc, SDL_Keycode sym) {
+    SDL_Event e = {0};
+    e.type               = SDL_KEYDOWN;
+    e.key.state          = SDL_PRESSED;
+    e.key.repeat         = 0;
+    e.key.keysym.scancode = sc;
+    e.key.keysym.sym     = sym;
+    q_push(&e);
+}
+static void push_keyup(SDL_Scancode sc, SDL_Keycode sym) {
+    SDL_Event e = {0};
+    e.type               = SDL_KEYUP;
+    e.key.state          = SDL_RELEASED;
+    e.key.repeat         = 0;
+    e.key.keysym.scancode = sc;
+    e.key.keysym.sym     = sym;
+    q_push(&e);
+}
 static void push_mbtn(Uint8 btn, int down) {
     SDL_Event e = {0};
     e.type          = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
     e.button.button = btn;
     e.button.state  = down ? SDL_PRESSED : SDL_RELEASED;
+    e.button.clicks = 1;
     q_push(&e);
 }
 static void push_wheel(int y) {
@@ -69,88 +102,60 @@ static void push_wheel(int y) {
     q_push(&e);
 }
 
-/* ── Mise à jour principale depuis la SHM ────────────────────────── */
+/* ── Sync depuis SHM ─────────────────────────────────────────────── */
 static void sync_shm(void) {
     if (!g_shm || g_shm->seq == g_prev_seq) return;
 
     TWInputShm s;
     memcpy(&s, g_shm, sizeof(s));
 
-    fprintf(stderr, "[hook] seq=%lu dir=%d jump=%d space_key=%d\n",
-        s.seq, s.direction,
-        s.jump, g_fake_keys[SDL_SCANCODE_SPACE]);
+    /* ── Direction (A / D) ─────────────────────────────────────────
+       KEYUP de l'ancienne direction, KEYDOWN de la nouvelle */
+    if (s.direction != g_prev_dir) {
+        if (g_prev_dir == -1) push_keyup(SDL_SCANCODE_A, SDLK_a);
+        if (g_prev_dir ==  1) push_keyup(SDL_SCANCODE_D, SDLK_d);
+        if (s.direction == -1) push_keydown(SDL_SCANCODE_A, SDLK_a);
+        if (s.direction ==  1) push_keydown(SDL_SCANCODE_D, SDLK_d);
+        g_prev_dir = s.direction;
+    }
 
-    /* Clavier continu — directement dans le faux tableau */
-    g_fake_keys[SDL_SCANCODE_A]     = (s.direction == -1) ? 1 : 0;
-    g_fake_keys[SDL_SCANCODE_D]     = (s.direction ==  1) ? 1 : 0;
-    
-    // Jump
-    // g_fake_keys[SDL_SCANCODE_SPACE] = s.jump ? 1 : 0;
-    /* Jump — recréer un edge KEYUP+KEYDOWN à chaque step où jump=1
-    TW traite les events séquentiellement :
-    KEYUP  → -jump → m_Jumped&=~1
-    KEYDOWN → +jump → m_Jump=1 → nouveau saut autorisé */
+    /* ── Jump (space) ──────────────────────────────────────────────
+       À chaque step où jump=1 : KEYUP + KEYDOWN pour recréer un edge.
+       TW vérifie m_Jumped&1 — il faut que -jump (KEYUP) passe d'abord
+       pour reset le bit, puis +jump (KEYDOWN) pour déclencher le saut. */
     if (s.jump) {
         if (g_prev_jump) {
-            /* Déjà à 1 : forcer un KEYUP d'abord pour reset m_Jumped&1 */
-            SDL_Event up = {0};
-            up.type = SDL_KEYUP;
-            up.key.state = SDL_RELEASED;
-            up.key.repeat = 0;
-            up.key.keysym.sym      = SDLK_SPACE;
-            up.key.keysym.scancode = SDL_SCANCODE_SPACE;
-            q_push(&up);
+            /* Déjà à 1 : créer un edge pour permettre un nouveau saut */
+            push_keyup(SDL_SCANCODE_SPACE, SDLK_SPACE);
         }
-        SDL_Event down = {0};
-        down.type = SDL_KEYDOWN;
-        down.key.state = SDL_PRESSED;
-        down.key.repeat = 0;
-        down.key.keysym.sym      = SDLK_SPACE;
-        down.key.keysym.scancode = SDL_SCANCODE_SPACE;
-        q_push(&down);
+        push_keydown(SDL_SCANCODE_SPACE, SDLK_SPACE);
     } else if (g_prev_jump) {
-        /* jump 1→0 : KEYUP final */
-        SDL_Event up = {0};
-        up.type = SDL_KEYUP;
-        up.key.state = SDL_RELEASED;
-        up.key.keysym.sym      = SDLK_SPACE;
-        up.key.keysym.scancode = SDL_SCANCODE_SPACE;
-        q_push(&up);
+        push_keyup(SDL_SCANCODE_SPACE, SDLK_SPACE);
     }
     g_prev_jump = s.jump;
 
-    /* Mettre à jour aussi le fake keyboard state */
-    g_fake_keys[SDL_SCANCODE_SPACE] = s.jump ? 1 : 0;
-
-    /* Fire — tap souris sur front montant */
+    /* ── Fire (bouton gauche) — tap one-shot ───────────────────────*/
     if (s.fire && !g_prev_fire) {
         push_mbtn(SDL_BUTTON_LEFT, 1);
         push_mbtn(SDL_BUTTON_LEFT, 0);
     }
     g_prev_fire = s.fire;
 
-    /* Hook — hold souris */
+    /* ── Hook (bouton droit) — hold ────────────────────────────────*/
     if (s.hook != g_prev_hook) {
         push_mbtn(SDL_BUTTON_RIGHT, s.hook ? 1 : 0);
         g_prev_hook = s.hook;
     }
 
-    /* Weapon switch — molette sur front montant */
+    /* ── Weapon switch — molette ───────────────────────────────────*/
     if (s.weapon_switch && s.weapon_switch != g_prev_wpn) {
         push_wheel(s.weapon_switch == 1 ? 1 : -1);
     }
     g_prev_wpn = s.weapon_switch;
 
-    /* Aim — MOUSEMOTION */
-    {
-        int w = s.win_w > 0 ? s.win_w : 800;
-        int h = s.win_h > 0 ? s.win_h : 600;
-        SDL_Event e = {0};
-        e.type     = SDL_MOUSEMOTION;
-        e.motion.x = (int)(w / 2 + s.aim_x * (w / 3));
-        e.motion.y = (int)(h / 2 + s.aim_y * (h / 3));
-        q_push(&e);
-    }
+    /* ── Aim : stocker la cible pour SDL_GetRelativeMouseState ─────*/
+    g_prev_aim_x = s.aim_x;
+    g_prev_aim_y = s.aim_y;
 
     g_prev_seq = s.seq;
 }
@@ -188,40 +193,33 @@ int SDL_PollEvent(SDL_Event *event) {
     return real(event);
 }
 
-/* ── Hook SDL_GetKeyboardState ───────────────────────────────────── */
+/* ── Hook SDL_GetRelativeMouseState ─────────────────────────────── */
 /*
- * TW lit l'état continu du clavier via cette fonction.
- * On retourne notre faux tableau au lieu de l'état physique.
+ * TW utilise le mode souris relative pour la visée.
+ * À chaque frame, il lit le déplacement depuis le dernier appel.
+ * On retourne un delta calculé depuis notre aim_x/aim_y cible.
  */
-const Uint8 *SDL_GetKeyboardState(int *numkeys) {
-    if (numkeys) *numkeys = 512;
-    sync_shm();
-    return g_fake_keys;
-}
-
-/* ── Hook SDL_GetMouseState ──────────────────────────────────────── */
-/*
- * TW lit l'état continu des boutons souris via cette fonction.
- * On injecte le bouton droit (hook) et la position (aim).
- */
-Uint32 SDL_GetMouseState(int *x, int *y) {
+Uint32 SDL_GetRelativeMouseState(int *x, int *y) {
     static Uint32 (*real)(int *, int *) = NULL;
-    if (!real) real = dlsym(RTLD_NEXT, "SDL_GetMouseState");
+    if (!real) real = dlsym(RTLD_NEXT, "SDL_GetRelativeMouseState");
 
-    /* Position réelle (on l'ignore, on override ci-dessous) */
+    /* Vider l'état réel (delta physique qu'on ignore) */
     real(x, y);
 
     Uint32 state = 0;
     if (g_shm) {
+        int w = g_shm->win_w > 0 ? g_shm->win_w : 800;
+        int h = g_shm->win_h > 0 ? g_shm->win_h : 600;
+
+        /* Position absolue cible en pixels */
+        int tx = (int)(w / 2 + g_shm->aim_x * (w / 2));
+        int ty = (int)(h / 2 + g_shm->aim_y * (h / 2));
+
+        if (x) *x = tx;
+        if (y) *y = ty;
+
         if (g_shm->hook)
             state |= SDL_BUTTON(SDL_BUTTON_RIGHT);
-
-        if (x && y) {
-            int w = g_shm->win_w > 0 ? g_shm->win_w : 800;
-            int h = g_shm->win_h > 0 ? g_shm->win_h : 600;
-            *x = (int)(w / 2 + g_shm->aim_x * (w / 3));
-            *y = (int)(h / 2 + g_shm->aim_y * (h / 3));
-        }
     }
     return state;
 }
