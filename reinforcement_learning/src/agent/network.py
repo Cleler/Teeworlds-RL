@@ -8,7 +8,7 @@ Ar_2 : Multi-head — ResNet50 backbone + têtes séparées pour chaque action
 
 import torch
 import torch.nn as nn
-from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import resnet50, ResNet50_Weights, resnet18, ResNet18_Weights
 
 
 # ======================================================================
@@ -97,14 +97,15 @@ class Ar_2(nn.Module):
         """
         super(Ar_2, self).__init__()  # FIX: était super(Ar_1, self)
 
-        backbone = resnet50(weights=ResNet50_Weights.DEFAULT if backbone_pretrained else None)
+        #backbone = resnet50(weights=ResNet50_Weights.DEFAULT if backbone_pretrained else None)
+        backbone = resnet18(weights=ResNet18_Weights.DEFAULT if backbone_pretrained else None)
         self.backbone = nn.Sequential(*list(backbone.children())[:-1])  # → (batch, 2048)
         
         for param in self.backbone.parameters():
             param.requires_grad = False
 
         self.network = nn.Sequential(
-            nn.Linear(2048 + input_size, 128),
+            nn.Linear(512 + input_size, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
