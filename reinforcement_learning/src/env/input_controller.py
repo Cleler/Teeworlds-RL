@@ -168,10 +168,166 @@
 #         return math.cos(angle_rad), math.sin(angle_rad)
 
 
+# """
+# Injection d'inputs native via python-xlib.
+# Remplace xdotool par des appels directs au serveur X11 en RAM.
+# Zéro sous-processus bash, latence nulle, aucun conflit de threads.
+# """
+
+# import math
+# import logging
+# from typing import Set
+
+# try:
+#     from Xlib import X, display, XK
+#     from Xlib.ext import xtest
+# except ImportError:
+#     raise ImportError("Veuillez installer python-xlib : pip install python-xlib")
+
+# logger = logging.getLogger(__name__)
+
+# class InputController:
+#     def __init__(self, key_mapping: dict, aim_radius: int = 300,
+#                  screen_center: tuple[int, int] = (400, 300)):
+#         self.keys = key_mapping
+#         self.aim_radius = aim_radius
+#         self.screen_center = screen_center
+#         self.held_keys: Set[str] = set()
+        
+#         # Variables système X11
+#         self.display_id = None
+#         self.disp = None
+#         self.last_aim = None
+
+#     def connect_display(self):
+#         """Initialise la connexion directe au serveur X11 virtuel."""
+#         display_name = f":{self.display_id}" if getattr(self, "display_id", None) is not None else None
+#         self.disp = display.Display(display_name)
+
+#     def set_screen_center(self, center_x: int, center_y: int):
+#         self.screen_center = (center_x, center_y)
+
+#     # ------------------------------------------------------------------
+#     # Conversion des touches physiques
+#     # ------------------------------------------------------------------
+#     def _get_keycode(self, key_char: str):
+#         """Convertit les strings ('a', 'space') en code matériel X11."""
+#         if key_char == "space":
+#             keysym = XK.XK_space
+#         else:
+#             keysym = XK.string_to_keysym(key_char)
+#         return self.disp.keysym_to_keycode(keysym)
+
+#     def _get_mouse_btn(self, key: str) -> int:
+#         if key == "mouse_left": return 1
+#         if key == "mouse_middle": return 2
+#         if key == "mouse_right": return 3
+#         if key == "mouse_scroll_up": return 4
+#         if key == "mouse_scroll_down": return 5
+#         return 1
+
+#     # ------------------------------------------------------------------
+#     # Exécution X11 native (xtest)
+#     # ------------------------------------------------------------------
+#     def _hold_key(self, key: str):
+#         if key not in self.held_keys:
+#             if key.startswith("mouse_"):
+#                 xtest.fake_input(self.disp, X.ButtonPress, self._get_mouse_btn(key))
+#             else:
+#                 xtest.fake_input(self.disp, X.KeyPress, self._get_keycode(key))
+#             self.held_keys.add(key)
+
+#     def _release_key(self, key: str):
+#         if key in self.held_keys:
+#             if key.startswith("mouse_"):
+#                 xtest.fake_input(self.disp, X.ButtonRelease, self._get_mouse_btn(key))
+#             else:
+#                 xtest.fake_input(self.disp, X.KeyRelease, self._get_keycode(key))
+#             self.held_keys.discard(key)
+
+#     def _tap_key(self, key: str):
+#         if key.startswith("mouse_"):
+#             btn = self._get_mouse_btn(key)
+#             xtest.fake_input(self.disp, X.ButtonPress, btn)
+#             xtest.fake_input(self.disp, X.ButtonRelease, btn)
+#         else:
+#             kc = self._get_keycode(key)
+#             xtest.fake_input(self.disp, X.KeyPress, kc)
+#             xtest.fake_input(self.disp, X.KeyRelease, kc)
+
+#     def _update_hold(self, key: str, pressed: bool):
+#         if pressed:
+#             self._hold_key(key)
+#         else:
+#             self._release_key(key)
+
+#     # ------------------------------------------------------------------
+#     # Application de l'action du Réseau de Neurones
+#     # ------------------------------------------------------------------
+#     def apply_action(self, direction: int, jump: int, fire: int,
+#                      hook: int, weapon_switch: int, aim_x: float, aim_y: float):
+        
+#         # Lazy loading de la connexion au display Xvfb
+#         if not self.disp:
+#             self.connect_display()
+
+#         # 1. GAUCHE / DROITE -> Maintient (Hold)
+#         key_left, key_right = self.keys["left"], self.keys["right"]
+#         if direction == 0:  # gauche
+#             self._hold_key(key_left)
+#             self._release_key(key_right)
+#         elif direction == 2:  # droite
+#             self._release_key(key_left)
+#             self._hold_key(key_right)
+#         else:
+#             self._release_key(key_left)
+#             self._release_key(key_right)
+
+#         # 2. HOOK -> Maintient (Hold)
+#         self._update_hold(self.keys["hook"], bool(hook))
+
+#         # 3. JUMP & FIRE -> Clic rapide (Tap)
+#         # On simule un appui puis un relâchement instantané dans la même frame
+#         if jump:
+#             self._tap_key(self.keys["jump"])
+            
+#         if fire:
+#             self._tap_key(self.keys["fire"])
+
+#         # 4. CHANGEMENT D'ARME -> Roulette (Tap)
+#         if weapon_switch == 1:
+#             self._tap_key("mouse_scroll_up")
+#         elif weapon_switch == 2:
+#             self._tap_key("mouse_scroll_down")        
+        
+#         # 5. VISÉE DE LA SOURIS
+#         target_x = self.screen_center[0] + int(aim_x * self.aim_radius)
+#         target_y = self.screen_center[1] + int(aim_y * self.aim_radius)
+#         if self.last_aim != (target_x, target_y):
+#             # Déplace la souris sans avoir besoin de shell
+#             xtest.fake_input(self.disp, X.MotionNotify, x=target_x, y=target_y)
+#             self.last_aim = (target_x, target_y)
+
+#         # /!\ CRITIQUE : Dit à X11 de traiter la file d'attente d'un coup
+#         self.disp.sync()
+        
+#     def release_all(self):
+#         """Relâche tout pour éviter le syndrome des touches fantômes."""
+#         if not self.disp: return
+#         for key in list(self.held_keys):
+#             self._release_key(key)
+#         self.disp.sync()
+#         self.held_keys.clear()
+
+#     @staticmethod
+#     def aim_angle_to_xy(angle_rad: float) -> tuple[float, float]:
+#         return math.cos(angle_rad), math.sin(angle_rad)
+
+
+
+
 """
 Injection d'inputs native via python-xlib.
-Remplace xdotool par des appels directs au serveur X11 en RAM.
-Zéro sous-processus bash, latence nulle, aucun conflit de threads.
 """
 
 import math
@@ -186,6 +342,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 class InputController:
     def __init__(self, key_mapping: dict, aim_radius: int = 300,
                  screen_center: tuple[int, int] = (400, 300)):
@@ -193,8 +350,7 @@ class InputController:
         self.aim_radius = aim_radius
         self.screen_center = screen_center
         self.held_keys: Set[str] = set()
-        
-        # Variables système X11
+
         self.display_id = None
         self.disp = None
         self.last_aim = None
@@ -203,15 +359,17 @@ class InputController:
         """Initialise la connexion directe au serveur X11 virtuel."""
         display_name = f":{self.display_id}" if getattr(self, "display_id", None) is not None else None
         self.disp = display.Display(display_name)
+        self.held_keys.clear()
+        self.last_aim = None
 
     def set_screen_center(self, center_x: int, center_y: int):
         self.screen_center = (center_x, center_y)
 
     # ------------------------------------------------------------------
-    # Conversion des touches physiques
+    # Conversion des touches
     # ------------------------------------------------------------------
+
     def _get_keycode(self, key_char: str):
-        """Convertit les strings ('a', 'space') en code matériel X11."""
         if key_char == "space":
             keysym = XK.XK_space
         else:
@@ -219,17 +377,19 @@ class InputController:
         return self.disp.keysym_to_keycode(keysym)
 
     def _get_mouse_btn(self, key: str) -> int:
-        if key == "mouse_left": return 1
-        if key == "mouse_middle": return 2
-        if key == "mouse_right": return 3
-        if key == "mouse_scroll_up": return 4
+        if key == "mouse_left":        return 1
+        if key == "mouse_middle":      return 2
+        if key == "mouse_right":       return 3
+        if key == "mouse_scroll_up":   return 4
         if key == "mouse_scroll_down": return 5
         return 1
 
     # ------------------------------------------------------------------
-    # Exécution X11 native (xtest)
+    # Primitives X11
     # ------------------------------------------------------------------
+
     def _hold_key(self, key: str):
+        """Press uniquement si pas déjà maintenu — évite les repeat X11."""
         if key not in self.held_keys:
             if key.startswith("mouse_"):
                 xtest.fake_input(self.disp, X.ButtonPress, self._get_mouse_btn(key))
@@ -238,14 +398,25 @@ class InputController:
             self.held_keys.add(key)
 
     def _release_key(self, key: str):
-        if key in self.held_keys:
-            if key.startswith("mouse_"):
-                xtest.fake_input(self.disp, X.ButtonRelease, self._get_mouse_btn(key))
-            else:
-                xtest.fake_input(self.disp, X.KeyRelease, self._get_keycode(key))
-            self.held_keys.discard(key)
+        """
+        Release TOUJOURS envoyé à X11, que held_keys soit synchronisé ou non.
+        Sans ça, si held_keys se vide (reset, exception...) sans que X11 reçoive
+        le Release, la touche reste physiquement enfoncée côté Xvfb indéfiniment.
+        """
+        if key.startswith("mouse_"):
+            xtest.fake_input(self.disp, X.ButtonRelease, self._get_mouse_btn(key))
+        else:
+            xtest.fake_input(self.disp, X.KeyRelease, self._get_keycode(key))
+        self.held_keys.discard(key)
 
     def _tap_key(self, key: str):
+        """
+        Press + Release immédiat.
+        Utilisé pour : fire (1 click = 1 balle), jump (1 press = 1 saut),
+        weapon switch (scroll).
+        Ces actions sont one-shot : le jeu réagit à l'événement Press lui-même,
+        pas à la durée du maintien.
+        """
         if key.startswith("mouse_"):
             btn = self._get_mouse_btn(key)
             xtest.fake_input(self.disp, X.ButtonPress, btn)
@@ -262,62 +433,83 @@ class InputController:
             self._release_key(key)
 
     # ------------------------------------------------------------------
-    # Application de l'action du Réseau de Neurones
+    # Application de l'action
     # ------------------------------------------------------------------
+
     def apply_action(self, direction: int, jump: int, fire: int,
                      hook: int, weapon_switch: int, aim_x: float, aim_y: float):
-        
-        # Lazy loading de la connexion au display Xvfb
+
         if not self.disp:
             self.connect_display()
 
-        # 1. GAUCHE / DROITE -> Maintient (Hold)
+        # 1. MOUVEMENT (A / D) — hold until release
         key_left, key_right = self.keys["left"], self.keys["right"]
-        if direction == 0:  # gauche
+        if direction == 0:    # gauche
             self._hold_key(key_left)
             self._release_key(key_right)
         elif direction == 2:  # droite
             self._release_key(key_left)
             self._hold_key(key_right)
-        else:
+        else:                 # neutre
             self._release_key(key_left)
             self._release_key(key_right)
 
-        # 2. HOOK -> Maintient (Hold)
-        self._update_hold(self.keys["hook"], bool(hook))
-
-        # 3. JUMP & FIRE -> Clic rapide (Tap)
-        # On simule un appui puis un relâchement instantané dans la même frame
+        # 2. JUMP (space) — tap : 1 press = 1 saut
         if jump:
             self._tap_key(self.keys["jump"])
-            
+
+        # 3. FIRE (mouse_left) — tap : 1 click = 1 balle
+        #    Pas de hold : le jeu déclenche le tir sur l'événement Press,
+        #    maintenir le bouton ne tire pas en rafale dans TW.
         if fire:
             self._tap_key(self.keys["fire"])
 
-        # 4. CHANGEMENT D'ARME -> Roulette (Tap)
+        # 4. HOOK (mouse_right) — hold until release
+        #    _release_key envoie TOUJOURS le ButtonRelease à X11 (pas de garde
+        #    held_keys), donc le grappin se détache même après un reset/désync.
+        self._update_hold(self.keys["hook"], bool(hook))
+
+        # 5. WEAPON SWITCH — tap (molette)
         if weapon_switch == 1:
             self._tap_key("mouse_scroll_up")
         elif weapon_switch == 2:
-            self._tap_key("mouse_scroll_down")        
-        
-        # 5. VISÉE DE LA SOURIS
+            self._tap_key("mouse_scroll_down")
+
+        # 6. VISÉE — MotionNotify uniquement si la position change
         target_x = self.screen_center[0] + int(aim_x * self.aim_radius)
         target_y = self.screen_center[1] + int(aim_y * self.aim_radius)
         if self.last_aim != (target_x, target_y):
-            # Déplace la souris sans avoir besoin de shell
             xtest.fake_input(self.disp, X.MotionNotify, x=target_x, y=target_y)
             self.last_aim = (target_x, target_y)
 
-        # /!\ CRITIQUE : Dit à X11 de traiter la file d'attente d'un coup
+        # Flush tout en une seule fois vers Xvfb
         self.disp.sync()
-        
+
+    # ------------------------------------------------------------------
+    # Nettoyage
+    # ------------------------------------------------------------------
+
     def release_all(self):
-        """Relâche tout pour éviter le syndrome des touches fantômes."""
-        if not self.disp: return
-        for key in list(self.held_keys):
-            self._release_key(key)
+        """
+        Relâche toutes les touches — appeler à chaque mort/reset.
+        On force le Release de toutes les touches connues explicitement
+        plutôt que de se fier au contenu de held_keys qui peut être désynchronisé.
+        """
+        if not self.disp:
+            return
+        for key in [
+            self.keys.get("left"),
+            self.keys.get("right"),
+            self.keys.get("jump"),
+            self.keys.get("fire"),
+            self.keys.get("hook"),
+        ]:
+            if key:
+                self._release_key(key)
         self.disp.sync()
         self.held_keys.clear()
+
+    # ------------------------------------------------------------------
 
     @staticmethod
     def aim_angle_to_xy(angle_rad: float) -> tuple[float, float]:
