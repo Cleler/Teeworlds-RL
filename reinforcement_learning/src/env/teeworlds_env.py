@@ -85,6 +85,7 @@ class TeeWorldsEnv(gym.Env):
         self.current_step = 0
         self.episode_kills = 0
         self.episode_deaths = 0
+        self.episode_damage_dealt = 0
 
         # ---- Espaces Gymnasium ----
         obs_h = config["capture"]["obs_height"]
@@ -126,6 +127,7 @@ class TeeWorldsEnv(gym.Env):
         self.current_step = 0
         self.episode_kills = 0
         self.episode_deaths = 0
+        self.episode_damage_dealt = 0
 
         # # Vider le buffer econ
         # self.econ.poll()
