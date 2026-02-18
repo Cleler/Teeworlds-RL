@@ -303,11 +303,11 @@ def train_multi(config: dict):
 
             print("len_buffer", len(buffer.buffer))
             print("type_buffer", type(buffer))
-            print("buffer_pos : ", buffer.buffer[0][0]['position'])
-            print("buffer_fire : ", buffer.buffer[0][1]['fire'])
-            print("buffer_aim : ", buffer.buffer[0][1]['aim'])
-            print("buffer_reward : ", buffer.buffer[0][2])
-            print("buffer_next_state : ", buffer.buffer[0][3]['position'])
+            print("buffer_pos : ", buffer.buffer[-1][0]['position'])
+            print("buffer_fire : ", buffer.buffer[-1][1]['fire'])
+            print("buffer_aim : ", buffer.buffer[-1][1]['aim'])
+            print("buffer_reward : ", buffer.buffer[-1][2])
+            print("buffer_next_state : ", buffer.buffer[-1][3]['position'])
             #print("buffer_aim : ", buffer.buffer[0]['aim'])
             print(min_buffer_size)
             # ---- Entraînement ----
