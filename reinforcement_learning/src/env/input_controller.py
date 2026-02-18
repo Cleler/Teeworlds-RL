@@ -459,10 +459,11 @@ class InputController:
 
         # 2. JUMP — tap direct, exactement comme fire
         #    Si fire marche en tap souris, jump doit marcher en tap clavier
-        if jump:
-            print(f"JUMP envoyé env={self.display_id}")
-            self._tap_key(self.keys["jump"])
-            
+        # if jump:
+        #     print(f"JUMP envoyé env={self.display_id}")
+        #     self._tap_key(self.keys["jump"])
+        self._update_hold(self.keys["jump"], bool(jump))
+        
         # 3. FIRE — tap direct
         if fire:
             self._tap_key(self.keys["fire"])
