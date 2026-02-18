@@ -17,7 +17,7 @@ HTML_TEMPLATE = """
         .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-top: 20px; }
         .bot-card { background-color: #2d2d2d; border: 2px solid #444; border-radius: 10px; padding: 15px; }
         .bot-card h3 { margin: 0 0 10px 0; color: #4CAF50; }
-        img { width: 252px; height: 252px; image-rendering: pixelated; border-radius: 4px; background-color: #000; }
+        img { width: 480px; height: 270px; border-radius: 4px; background-color: #000; object-fit: cover; }
     </style>
     <script>
         if ({{ bot_ids|length }} === 0) {

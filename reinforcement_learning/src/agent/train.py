@@ -13,6 +13,7 @@ import logging
 import numpy as np
 import torch
 import cv2
+import requests
 from concurrent.futures import ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
 
@@ -295,7 +296,8 @@ def train_multi(config: dict):
             obs_list = new_obs_list
             
             for i, obs in enumerate(obs_list):
-                network_executor.submit(send_frame_to_visualizer, i, obs["image"].copy())
+                hd_frame = manager.envs[i].capture.grab_raw()
+                network_executor.submit(send_frame_to_visualizer, i, hd_frame)
                 
             print("="*50)
 

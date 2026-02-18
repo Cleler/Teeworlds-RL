@@ -10,6 +10,8 @@ services:
     ports:
       - "8304:8304/udp"
       - "8304:8304/tcp"
+      - "8303:8303/udp"
+      - "8303:8303/tcp"
     restart: unless-stopped
 
   visualizer:
@@ -20,5 +22,5 @@ services:
     volumes:
       - ./reinforcement_learning:/app/reinforcement_learning
     ports:
-      - "5000:5000/tcp"  # Port du Dashboard Web (TCP)
+      - "5000:5000/tcp"
     restart: unless-stopped
