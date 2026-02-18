@@ -445,6 +445,8 @@ class InputController:
         if not self.disp:
             self.connect_display()
 
+        self._release_key(self.keys["jump"])
+
         # 1. MOUVEMENT — hold until release
         key_left, key_right = self.keys["left"], self.keys["right"]
         if direction == 0:
@@ -459,10 +461,9 @@ class InputController:
 
         # 2. JUMP — tap direct, exactement comme fire
         #    Si fire marche en tap souris, jump doit marcher en tap clavier
-        # if jump:
-        #     print(f"JUMP envoyé env={self.display_id}")
-        #     self._tap_key(self.keys["jump"])
-        self._update_hold(self.keys["jump"], bool(jump))
+        if jump:
+            self._hold_key(self.keys["jump"])
+        # self._update_hold(self.keys["jump"], bool(jump))
         
         # 3. FIRE — tap direct
         if fire:
