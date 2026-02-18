@@ -34,8 +34,8 @@ env:
   reset_delay: 3.0
 
 reward:
-  kill: 5.0
-  death: -1.0
+  kill: 10.0
+  death: -2.0
   damage_dealt: 1.0
   survival_bonus: 0.0001
 
@@ -75,5 +75,5 @@ training:
   target_update: 1000
   aim_weight: 1.0
   save_freq: 50_000
-  save_path: "./checkpoints"
-  log_path: "./logs"
+  save_path: "./reinforcement_learning/checkpoints"
+  log_path: "./reinforcement_learning/logs"

@@ -280,6 +280,35 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+RE_KILL = re.compile(
+    r"^kill killer='(?P<killer_id>-?\d+):(?P<killer_team>-?\d+):[^']*' "
+    r"victim='(?P<victim_id>\d+):(?P<victim_team>\d+):[^']*' "
+    r"weapon=(?P<weapon>\d+) special=(?P<special>\d+)$"
+)
+
+RE_SHOT = re.compile(
+    r"^shot player='(?P<player_id>\d+):[^']*' "
+    r"team=(?P<team>\d+) weapon=(?P<weapon>\d+)$"
+)
+
+RE_MATCH_START = re.compile(
+    r"^start match type='(?P<type>[^']*)' teamplay='(?P<teamplay>\d+)'$"
+)
+
+RE_TEAM_JOIN = re.compile(
+    r"^team_join player='(?P<player_id>\d+):[^']*' team=(?P<team>\d+)$"
+)
+
+WEAPON_DAMAGE = {
+    0: 3,  # Hammer
+    1: 1,  # Gun
+    2: 1,  # Shotgun (par pellet)
+    3: 6,  # Grenade
+    4: 5,  # Laser
+    5: 9,  # Ninja
+}
+
+
 class EconClient:
     def __init__(self, host: str = "127.0.0.1", port: int = 8303,
                  password: str = "", read_timeout: float = 0.05):
@@ -296,8 +325,8 @@ class EconClient:
 
     def _ensure_player(self, pid: int):
         if pid not in self.players:
-            self.players[pid] = {"kills": 0, "deaths": 0, "alive": True}
-            self.prev_players[pid] = {"kills": 0, "deaths": 0}
+            self.players[pid] = {"kills": 0, "deaths": 0, "damage_dealt": 0, "alive": True}
+            self.prev_players[pid] = {"kills": 0, "deaths": 0, "damage_dealt": 0}
 
     def connect(self) -> bool:
         try:
@@ -358,39 +387,42 @@ class EconClient:
             if line.strip(): self._parse_line(line.strip())
 
     def _parse_line(self, line: str):
-        # 1. Kill (format 1)
-        kill_match = re.search(r"kill.*killer[_=]'?(\d+)[:\s].*victim[_=]'?(\d+)[:\s]", line)
+        kill_match = RE_KILL.search(line)
         if kill_match:
-            k_id, v_id = int(kill_match.group(1)), int(kill_match.group(2))
-            self._ensure_player(k_id)
+            k_id = int(kill_match.group("killer_id"))
+            v_id = int(kill_match.group("victim_id"))
             self._ensure_player(v_id)
-            if k_id != v_id: self.players[k_id]["kills"] += 1
+            if k_id >= 0:
+                self._ensure_player(k_id)
+                if k_id != v_id:
+                    self.players[k_id]["kills"] += 1
+
             self.players[v_id]["deaths"] += 1
             self.players[v_id]["alive"] = False
             return
 
-        # 2. Kill (format 2)
-        kill_alt = re.search(r"(\d+):\S+\s+killed\s+(\d+):", line)
-        if kill_alt:
-            k_id, v_id = int(kill_alt.group(1)), int(kill_alt.group(2))
-            self._ensure_player(k_id)
-            self._ensure_player(v_id)
-            if k_id != v_id: self.players[k_id]["kills"] += 1
-            self.players[v_id]["deaths"] += 1
-            self.players[v_id]["alive"] = False
-            return
-
-        # 3. Spawn
-        spawn_match = re.search(r"spawn.*'?(\d+)[:']", line, re.IGNORECASE)
-        if spawn_match:
-            pid = int(spawn_match.group(1))
+        team_join = RE_TEAM_JOIN.search(line)
+        if team_join:
+            pid = int(team_join.group("player_id"))
+            team = int(team_join.group("team"))
             self._ensure_player(pid)
-            self.players[pid]["alive"] = True
-
-        # 4. Match start
-        if "start match" in line:
+            self.players[pid]["team"] = team
+            return
+        
+        match_start = RE_MATCH_START.search(line)
+        if match_start:
             for pid in self.players:
                 self.players[pid]["alive"] = True
+            return
+
+        shot_match = RE_SHOT.search(line)
+        if shot_match:
+            shooter_id = int(shot_match.group("player_id"))
+            weapon_id = int(shot_match.group("weapon"))
+            self._ensure_player(shooter_id)
+            damage = WEAPON_DAMAGE.get(weapon_id, 0)
+            self.players[shooter_id]["damage_dealt"] += damage
+            return
 
     # ---- Getters avec agent_id ----
     
@@ -402,8 +434,9 @@ class EconClient:
         current, prev = self.players[agent_id], self.prev_players[agent_id]
         k = current["kills"] - prev["kills"]
         d = current["deaths"] - prev["deaths"]
-        prev["kills"], prev["deaths"] = current["kills"], current["deaths"]
-        return k, d
+        dmg = current["damage_dealt"] - prev["damage_dealt"]
+        prev["kills"], prev["deaths"], prev["damage_dealt"] = current["kills"], current["deaths"], current["damage_dealt"]
+        return k, d, dmg
 
     def is_player_dead(self, agent_id: int) -> bool:
         self._ensure_player(agent_id)

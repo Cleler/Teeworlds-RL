@@ -210,13 +210,15 @@ class TeeWorldsEnv(gym.Env):
         }
 
     def _compute_reward(self) -> float:
-        kills, deaths = self.econ.get_score(self.agent_id)
+        kills, deaths, damage_dealt = self.econ.get_score(self.agent_id)
         self.episode_kills += kills
         self.episode_deaths += deaths
+        self.episode_damage_dealt += damage_dealt
 
         reward = 0.0
         reward += kills * self.reward_config["kill"]
         reward += deaths * self.reward_config["death"]
+        reward += damage_dealt * self.reward_config["damage_dealt"]
         reward += self.reward_config["survival_bonus"]
 
         return reward
@@ -226,5 +228,6 @@ class TeeWorldsEnv(gym.Env):
             "step": self.current_step,
             "kills": self.episode_kills,
             "deaths": self.episode_deaths,
+            "damage_dealt": self.episode_damage_dealt,
             "alive": not self.econ.is_player_dead(self.agent_id),
         }
