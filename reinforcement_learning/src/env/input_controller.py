@@ -542,7 +542,7 @@ import struct
 # = : natif sans padding
 # i i i i i f f i i Q
 # dir jump fire hook wpn aim_x aim_y win_w win_h seq
-_FMT  = "=iiiiiiffiiQ"
+_FMT  = "=iiiiiffiiQ"
 _SIZE = struct.calcsize(_FMT)
 
 
