@@ -324,7 +324,7 @@ class MultiEnvManager:
 
         futures = [self.executor.submit(_step, (env, act)) for env, act in zip(self.envs, actions)]
         return [f.result() for f in futures]
-            
+
     # ------------------------------------------------------------------
     # Nettoyage
     # ------------------------------------------------------------------

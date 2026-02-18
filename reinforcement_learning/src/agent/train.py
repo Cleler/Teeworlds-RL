@@ -13,7 +13,6 @@ import logging
 import numpy as np
 import torch
 import cv2
-import requests
 from concurrent.futures import ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
 

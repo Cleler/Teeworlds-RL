@@ -140,6 +140,8 @@ class TeeWorldsEnv(gym.Env):
         return self._get_observation(), self._get_info()
 
     def step(self, action):
+        print(f"STEP {self.current_step} | KEYS {action['keys']} | AIM {action['aim']}")
+
         self.current_step += 1
 
         # Appliquer l'action

@@ -46,6 +46,7 @@ class InputController:
 
     def apply_action(self, direction: int, jump: int, fire: int,
                      hook: int, weapon_switch: int, aim_x: float, aim_y: float):
+        print("apply_action")
         """
         Applique une action complète.
 
@@ -81,16 +82,20 @@ class InputController:
 
     def _update_direction(self, direction: int):
         """Gère les touches de déplacement gauche/droite."""
+        print("update direction")
         key_left = self.keys["left"]
         key_right = self.keys["right"]
 
         if direction == 0:  # gauche
+            print("direction = left")
             self._hold_key(key_left)
             self._release_key(key_right)
         elif direction == 2:  # droite
+            print("direction = right")
             self._release_key(key_left)
             self._hold_key(key_right)
         else:  # neutre
+            print("direction = none")
             self._release_key(key_left)
             self._release_key(key_right)
 
