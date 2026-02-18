@@ -342,7 +342,7 @@ class EconClient:
 
             response = self._recv_until("Authentication", timeout=5.0)
             if "Authentication successful" in response:
-                self._send("bind space +jump")
+                self._send("bind w +jump")
                 self.sock.settimeout(self.read_timeout)
                 return True
             return False

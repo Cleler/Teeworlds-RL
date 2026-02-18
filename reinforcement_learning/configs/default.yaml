@@ -27,7 +27,7 @@ input:
   keys:
     left: "a"
     right: "d"
-    jump: "space"
+    jump: "w"
     fire: "mouse_left"
     hook: "mouse_right"
 
