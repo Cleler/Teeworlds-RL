@@ -296,7 +296,11 @@ RE_MATCH_START = re.compile(
 )
 
 RE_TEAM_JOIN = re.compile(
-    r"^team_join player='(?P<player_id>\d+):[^']*' team=(?P<team>\d+)$"
+    r"^team_join player='(?P<player_id>\d+):(?P<player_name>[^']*)' team=(?P<team>\d+)$"
+)
+
+RE_POS = re.compile(
+    r"^pos player='(?P<player_id>\d+)' x='(?P<x>[-\d.]+)' y='(?P<y>[-\d.]+)'$"
 )
 
 WEAPON_DAMAGE = {
@@ -322,6 +326,7 @@ class EconClient:
         # Dictionnaires pour stocker l'état de CHAQUE joueur via son ID
         self.players = {}
         self.prev_players = {}
+        self.agent_to_pid = {}
 
     def _ensure_player(self, pid: int):
         if pid not in self.players:
@@ -404,11 +409,19 @@ class EconClient:
         team_join = RE_TEAM_JOIN.search(line)
         if team_join:
             pid = int(team_join.group("player_id"))
+            name = team_join.group("player_name")
             team = int(team_join.group("team"))
             self._ensure_player(pid)
             self.players[pid]["team"] = team
+            if name.startswith("Bot_"):
+                try:
+                    agent_id = int(name.split("_")[1])
+                    self.agent_to_pid[agent_id] = pid
+                    logger.info(f"Mapping Agent {agent_id} -> Serveur PID {pid}")
+                except ValueError:
+                    pass
             return
-        
+                
         match_start = RE_MATCH_START.search(line)
         if match_start:
             for pid in self.players:
@@ -423,15 +436,29 @@ class EconClient:
             damage = WEAPON_DAMAGE.get(weapon_id, 0)
             self.players[shooter_id]["damage_dealt"] += damage
             return
+        
+        pos_match = RE_POS.search(line)
+        if pos_match:
+            pid = int(pos_match.group("player_id"))
+            x = float(pos_match.group("x"))
+            y = float(pos_match.group("y"))
+            self._ensure_player(pid)
+            self.players[pid]["pos"] = (x, y)
+            return
 
     # ---- Getters avec agent_id ----
     
     def get_position(self, agent_id: int = 0) -> tuple[float, float]:
-        return (0.0, 0.0)
+        pid = self.get_real_pid(agent_id)
+        return self.players[pid]["pos"]
+    
+    def get_real_pid(self, agent_id: int) -> int:
+        return self.agent_to_pid.get(agent_id, agent_id)
 
     def get_score(self, agent_id: int) -> tuple[int, int]:
-        self._ensure_player(agent_id)
-        current, prev = self.players[agent_id], self.prev_players[agent_id]
+        pid = self.get_real_pid(agent_id)
+        self._ensure_player(pid)
+        current, prev = self.players[pid], self.prev_players[pid]
         k = current["kills"] - prev["kills"]
         d = current["deaths"] - prev["deaths"]
         dmg = current["damage_dealt"] - prev["damage_dealt"]
@@ -439,8 +466,9 @@ class EconClient:
         return k, d, dmg
 
     def is_player_dead(self, agent_id: int) -> bool:
-        self._ensure_player(agent_id)
-        return not self.players[agent_id]["alive"]
+        pid = self.get_real_pid(agent_id)
+        self._ensure_player(pid)
+        return not self.players[pid]["alive"]
 
     def restart_round(self):
         self.send_command("restart")

@@ -149,9 +149,10 @@ class MultiEnvManager:
             tw_proc = subprocess.Popen(
                 [
                     self.tw_binary,
-                    "gfx_fullscreen", "1", # Plein écran virtuel !
-                    "gfx_screen_width", str(self.cell_w),
-                    "gfx_screen_height", str(self.cell_h),
+                    "gfx_fullscreen 1",
+                    f"gfx_screen_width {str(self.cell_w)}",
+                    f"gfx_screen_height {str(self.cell_h)}",
+                    f"player_name Bot_{i}",
                     f"connect {self.server_ip}:{self.server_port}",
                 ],
                 env=env_vars,
