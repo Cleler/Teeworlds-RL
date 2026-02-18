@@ -129,6 +129,8 @@ class TeeWorldsEnv(gym.Env):
         self.episode_deaths = 0
         self.episode_damage_dealt = 0
 
+        self.last_step_time = time.time()
+        
         # # Vider le buffer econ
         # self.econ.poll()
         # self.econ.prev_kills = self.econ.kills
@@ -157,8 +159,11 @@ class TeeWorldsEnv(gym.Env):
             aim_y=float(aim[1]),
         )
 
-        # Attendre le prochain tick
-        time.sleep(self.tick_interval)
+        elapsed = time.time() - self.last_step_time
+        sleep_time = self.tick_interval - elapsed
+        
+        if sleep_time > 0:
+            time.sleep(sleep_time) 
 
         # Lire les événements serveur
         # self.econ.poll()
@@ -176,6 +181,8 @@ class TeeWorldsEnv(gym.Env):
         if terminated:
             self.controller.release_all()
 
+        self.last_step_time = time.time()
+        
         return obs, reward, terminated, truncated, info
 
     def close(self):

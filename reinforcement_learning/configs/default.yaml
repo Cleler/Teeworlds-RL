@@ -7,7 +7,7 @@ server:
   econ_port: 8304
   econ_password: "password"
   reconnect_delay: 2.0
-  read_timeout: 0.05
+  read_timeout: 0.0
 
 visualizer:
   ip: "192.168.22.116"
