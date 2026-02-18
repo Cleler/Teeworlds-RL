@@ -76,9 +76,50 @@ static void sync_shm(void) {
     TWInputShm s;
     memcpy(&s, g_shm, sizeof(s));
 
+    fprintf(stderr, "[hook] seq=%lu dir=%d jump=%d space_key=%d\n",
+        s.seq, s.direction,
+        s.jump, g_fake_keys[SDL_SCANCODE_SPACE]);
+
     /* Clavier continu — directement dans le faux tableau */
     g_fake_keys[SDL_SCANCODE_A]     = (s.direction == -1) ? 1 : 0;
     g_fake_keys[SDL_SCANCODE_D]     = (s.direction ==  1) ? 1 : 0;
+    
+    // Jump
+    // g_fake_keys[SDL_SCANCODE_SPACE] = s.jump ? 1 : 0;
+    /* Jump — recréer un edge KEYUP+KEYDOWN à chaque step où jump=1
+    TW traite les events séquentiellement :
+    KEYUP  → -jump → m_Jumped&=~1
+    KEYDOWN → +jump → m_Jump=1 → nouveau saut autorisé */
+    if (s.jump) {
+        if (g_prev_jump) {
+            /* Déjà à 1 : forcer un KEYUP d'abord pour reset m_Jumped&1 */
+            SDL_Event up = {0};
+            up.type = SDL_KEYUP;
+            up.key.state = SDL_RELEASED;
+            up.key.repeat = 0;
+            up.key.keysym.sym      = SDLK_SPACE;
+            up.key.keysym.scancode = SDL_SCANCODE_SPACE;
+            q_push(&up);
+        }
+        SDL_Event down = {0};
+        down.type = SDL_KEYDOWN;
+        down.key.state = SDL_PRESSED;
+        down.key.repeat = 0;
+        down.key.keysym.sym      = SDLK_SPACE;
+        down.key.keysym.scancode = SDL_SCANCODE_SPACE;
+        q_push(&down);
+    } else if (g_prev_jump) {
+        /* jump 1→0 : KEYUP final */
+        SDL_Event up = {0};
+        up.type = SDL_KEYUP;
+        up.key.state = SDL_RELEASED;
+        up.key.keysym.sym      = SDLK_SPACE;
+        up.key.keysym.scancode = SDL_SCANCODE_SPACE;
+        q_push(&up);
+    }
+    g_prev_jump = s.jump;
+
+    /* Mettre à jour aussi le fake keyboard state */
     g_fake_keys[SDL_SCANCODE_SPACE] = s.jump ? 1 : 0;
 
     /* Fire — tap souris sur front montant */
@@ -112,10 +153,6 @@ static void sync_shm(void) {
     }
 
     g_prev_seq = s.seq;
-
-    fprintf(stderr, "[hook] seq=%lu dir=%d jump=%d space_key=%d\n",
-        s.seq, s.direction,
-        s.jump, g_fake_keys[SDL_SCANCODE_SPACE]);
 }
 
 /* ── Constructeur ────────────────────────────────────────────────── */
