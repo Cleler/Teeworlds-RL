@@ -269,6 +269,7 @@ class MultiEnvManager:
             env = TeeWorldsEnv(env_config, shared_econ=self.shared_econ, agent_id=i)
             
             env.controller.display_id = display_id
+            env.controller.connect_display() 
             env.controller.screen_center = (self.cell_w // 2, self.cell_h // 2)
             env.capture.display_id = display_id
             

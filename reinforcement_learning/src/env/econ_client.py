@@ -281,26 +281,22 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 RE_KILL = re.compile(
-    r"^kill killer='(?P<killer_id>-?\d+):(?P<killer_team>-?\d+):[^']*' "
+    r"kill killer='(?P<killer_id>-?\d+):(?P<killer_team>-?\d+):[^']*' "
     r"victim='(?P<victim_id>\d+):(?P<victim_team>\d+):[^']*' "
-    r"weapon=(?P<weapon>\d+) special=(?P<special>\d+)$"
+    r"weapon=(?P<weapon>\d+) special=(?P<special>\d+)"
 )
-
 RE_SHOT = re.compile(
-    r"^shot player='(?P<player_id>\d+):[^']*' "
-    r"team=(?P<team>\d+) weapon=(?P<weapon>\d+)$"
+    r"shot player='(?P<player_id>\d+):[^']*' "
+    r"team=(?P<team>\d+) weapon=(?P<weapon>\d+)"
 )
-
 RE_MATCH_START = re.compile(
-    r"^start match type='(?P<type>[^']*)' teamplay='(?P<teamplay>\d+)'$"
+    r"start match type='(?P<type>[^']*)' teamplay='(?P<teamplay>\d+)'"
 )
-
 RE_TEAM_JOIN = re.compile(
-    r"^team_join player='(?P<player_id>\d+):(?P<player_name>[^']*)' team=(?P<team>\d+)$"
+    r"team_join player='(?P<player_id>\d+):(?P<player_name>[^']*)' team=(?P<team>\d+)"
 )
-
 RE_POS = re.compile(
-    r"^pos player='(?P<player_id>\d+)' x='(?P<x>[-\d.]+)' y='(?P<y>[-\d.]+)'$"
+    r"pos player='(?P<player_id>\d+)' x='(?P<x>[-\d.]+)' y='(?P<y>[-\d.]+)'"
 )
 
 WEAPON_DAMAGE = {
