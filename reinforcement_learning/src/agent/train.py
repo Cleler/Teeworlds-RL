@@ -228,6 +228,9 @@ def train_multi(config: dict):
     # Reset initial
     obs_list = manager.reset_all()
 
+    train_executor = ThreadPoolExecutor(max_workers=1)
+    train_future = None
+
     # visualizer_ip = visualizer_cfg.get("ip", "192.168.22.116")
     # visualizer_url = f"http://{visualizer_ip}:5000/update/"
     
@@ -309,17 +312,40 @@ def train_multi(config: dict):
             print("buffer_next_state : ", buffer.next_positions)
             #print("buffer_aim : ", buffer.buffer[0]['aim'])
             print(min_buffer_size)
+
+
             # ---- Entraînement ----
-
+            # ---- Training asynchrone ----
+            # On lance un train_step seulement si le précédent est terminé
+            # → le forward/backward ne bloque jamais apply_action
             if len(buffer) >= min_buffer_size:
-                loss = train_step(model, target_model, optimizer, criterion,
-                                  buffer, batch_size, device)
-                print("loss", loss)
+                if train_future is None or train_future.done():
+                    # Récupérer le résultat du step précédent pour les logs
+                    if train_future is not None and train_future.done():
+                        try:
+                            loss = train_future.result()
+                            if global_step % (200 * actual_n) == 0:
+                                writer.add_scalar("train/loss", loss, global_step)
+                                writer.add_scalar("train/epsilon", epsilon, global_step)
+                                writer.add_scalar("train/buffer_size", len(buffer), global_step)
+                        except Exception as e:
+                            logger.error(f"Erreur train_step: {e}")
 
-                if global_step % (100 * actual_n) == 0:
-                    writer.add_scalar("train/loss", loss, global_step)
-                    writer.add_scalar("train/epsilon", epsilon, global_step)
-                    writer.add_scalar("train/buffer_size", len(buffer), global_step)
+                    # Lancer le prochain train_step en arrière-plan
+                    train_future = train_executor.submit(
+                        train_step, model, target_model, optimizer,
+                        criterion, buffer, batch_size, device
+                    )
+
+            # if len(buffer) >= min_buffer_size:
+            #     loss = train_step(model, target_model, optimizer, criterion,
+            #                       buffer, batch_size, device)
+            #     print("loss", loss)
+
+            #     if global_step % (100 * actual_n) == 0:
+            #         writer.add_scalar("train/loss", loss, global_step)
+            #         writer.add_scalar("train/epsilon", epsilon, global_step)
+            #         writer.add_scalar("train/buffer_size", len(buffer), global_step)
 
             # ---- Target network ----
             if global_step % target_update == 0:
@@ -334,6 +360,10 @@ def train_multi(config: dict):
     except KeyboardInterrupt:
         logger.info("Entraînement interrompu")
     finally:
+        if train_future is not None:
+            train_future.cancel()
+        train_executor.shutdown(wait=False)
+        
         final_path = os.path.join(train_cfg["save_path"], "ar2_final.pt")
         torch.save(model.state_dict(), final_path)
         logger.info(f"Modèle final: {final_path}")

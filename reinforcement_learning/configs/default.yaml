@@ -47,7 +47,7 @@ reward:
 # ============================================
 multi_env:
   enabled: true             # false → mode single, true → mode grille
-  n_envs: 4                 # nombre de clients (commence petit, augmente après)
+  n_envs: 12                 # nombre de clients (commence petit, augmente après)
   grid_cols: 2              # colonnes de la grille (null = auto √n)
 
   # Résolution de ton écran
@@ -61,7 +61,7 @@ multi_env:
   game_port: 8303
 
   # Délai entre chaque lancement de client (secondes)
-  connect_delay: 0.5
+  connect_delay: 0.1
 
 training:
   architecture: "Ar_2"
