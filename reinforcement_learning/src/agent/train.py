@@ -238,11 +238,15 @@ def train_multi(config: dict):
             if len(frame.shape) == 3 and frame.shape[2] == 1:
                 frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
             ret, buffer = cv2.imencode('.jpg', frame)
+            
             if ret:
-                requests.post(f"{visualizer_url}{bot_id}", data=buffer.tobytes(), timeout=0.1)
-        except Exception:
-            pass
-        
+                requests.post(f"{visualizer_url}{bot_id}", data=buffer.tobytes(), timeout=2.0)
+            else:
+                print(f"⚠️ Erreur: OpenCV n'a pas pu encoder l'image du bot {bot_id}")
+                
+        except Exception as e:
+            print(f"⚠️ Erreur réseau (Visualizer Bot {bot_id}) : {e}")
+                    
     logger.info(f"Début de l'entraînement ({total_timesteps} timesteps, {actual_n} envs)...")
 
     try:

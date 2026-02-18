@@ -14,7 +14,8 @@
 set -e
 
 # TEEWORLDS_SERVER="${1:-teeworlds_srv}"
-TEEWORLDS_SERVER="./teeworlds-game/build-server/teeworlds_srv"
+# TEEWORLDS_SERVER="./teeworlds-game/build-server/teeworlds_srv"
+TEEWORLDS_SERVER="${1:-"./teeworlds-game/build-server/teeworlds_srv"}"
 
 # Vérifier que le binaire existe
 if ! command -v "$TEEWORLDS_SERVER" &> /dev/null; then

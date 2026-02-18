@@ -6,7 +6,7 @@ services:
     container_name: tw_server
     volumes:
       - ./reinforcement_learning:/app/reinforcement_learning
-      - ./teeworlds-game/build-server/teeworlds_srv:/app/teeworlds-game
+      - ./teeworlds-game/build-server:/app/build-server
     ports:
       - "8304:8304/udp"
       - "8304:8304/tcp"

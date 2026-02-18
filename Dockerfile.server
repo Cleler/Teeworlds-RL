@@ -1,11 +1,14 @@
-FROM debian:trixie
+FROM alpine:latest
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    bash \
-    zlib1g \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
+COPY ./reinforcement_learning/configs/server.cfg /app/reinforcement_learning/configs/server.cfg
 
-CMD ["bash", "reinforcement_learning/scripts/launch_server.sh", "./teeworlds_srv"]
+RUN apk add --no-cache \
+    bash \
+    zlib \
+    openssl \
+    libstdc++ \
+    libgcc
+
+CMD ["bash", "reinforcement_learning/scripts/launch_server.sh", "/app/build-server/teeworlds_srv"]

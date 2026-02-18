@@ -49,9 +49,13 @@ def index():
     return render_template_string(HTML_TEMPLATE, bot_ids=bot_ids)
 
 # --- NOUVELLE ROUTE : Pour recevoir les images de train.py ---
-@app.route('/update/<int:bot_id>', methods=['POST'])
+@app.route('/update/<int:bot_id>', methods=['GET', 'POST'])
 def update_frame(bot_id):
-    # On met à jour l'image en mémoire avec les données brutes reçues
+    # Si on essaie d'ouvrir le lien dans un navigateur
+    if request.method == 'GET':
+        return "Ceci est une API invisible. Pour voir les bots, va sur l'URL principale /", 400
+        
+    # Si train.py envoie une image (POST)
     LATEST_FRAMES[bot_id] = request.data
     return "OK", 200
 
