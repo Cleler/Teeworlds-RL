@@ -88,24 +88,33 @@ class DQNLoss(nn.Module):
 # Architecture 2 — Multi-head (discret + continu)
 # ======================================================================
 
-class Ar_2(nn.Module):
-    def __init__(self, input_size, backbone_pretrained=False):
-        """
-        Args:
-            input_size: Taille des variables supplémentaires (position, hp, etc.)
-            backbone_pretrained: Utiliser les poids ImageNet
-        """
-        super(Ar_2, self).__init__()  # FIX: était super(Ar_1, self)
+class SmallBackbone(nn.Module):
+    def __init__(self, in_channels=3):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=8, stride=4, padding=2),  # layer 1
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),           # layer 2
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),           # layer 3
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((4, 4)),                                     # → (batch, 64, 4, 4)
+        )
 
-        #backbone = resnet50(weights=ResNet50_Weights.DEFAULT if backbone_pretrained else None)
-        backbone = resnet18(weights=ResNet18_Weights.DEFAULT if backbone_pretrained else None)
-        self.backbone = nn.Sequential(*list(backbone.children())[:-1])  # → (batch, 2048)
-        
-        for param in self.backbone.parameters():
-            param.requires_grad = False
+    def forward(self, x):
+        return self.net(x)   # flatten handled outside
+
+
+class Ar_2(nn.Module):
+    def __init__(self, input_size, img_channels=3, backbone_pretrained=False):
+        super().__init__()
+
+        BACKBONE_OUT = 64 * 4 * 4  # = 1024
+
+        self.backbone = SmallBackbone(in_channels=img_channels)
 
         self.network = nn.Sequential(
-            nn.Linear(512 + input_size, 128),
+            nn.Linear(BACKBONE_OUT + input_size, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -114,27 +123,76 @@ class Ar_2(nn.Module):
         )
 
         # Discrete heads
-        self.head_move = nn.Linear(32, 3)   # left, none, right
-        self.head_jump = nn.Linear(32, 2)   # no jump, jump
-        self.head_hook = nn.Linear(32, 2)   # no hook, hook
-        self.head_fire = nn.Linear(32, 2)   # no fire, fire
-        self.head_weapon = nn.Linear(32, 3)   # 0: rien, 1: scroll haut, 2: scroll bas
+        self.head_move   = nn.Linear(32, 3)
+        self.head_jump   = nn.Linear(32, 2)
+        self.head_hook   = nn.Linear(32, 2)
+        self.head_fire   = nn.Linear(32, 2)
+        self.head_weapon = nn.Linear(32, 3)
 
-        # Continuous head — aim as (sin, cos)
-        self.head_aim = nn.Linear(32, 2)
+        # Continuous head
+        self.head_aim = nn.Linear(32, 2)   # (sin, cos)
 
     def forward(self, image, extra_vars):
-        img_features = self.backbone(image).flatten(1)               # (batch, 2048)
-        combined = torch.cat([img_features, extra_vars], dim=1)      # (batch, 2048 + input_size)
-        x = self.network(combined)                                    # (batch, 128)
+        img_features = self.backbone(image).flatten(1)           # (batch, 1024)
+        combined = torch.cat([img_features, extra_vars], dim=1)  # (batch, 1024 + input_size)
+        x = self.network(combined)
 
         return {
-            "move": self.head_move(x),   # (batch, 3)
-            "jump": self.head_jump(x),   # (batch, 2)
-            "hook": self.head_hook(x),   # (batch, 2)
-            "fire": self.head_fire(x),   # (batch, 2)
-            "aim":  self.head_aim(x),    # (batch, 2) ← (sin, cos)
+            "move":   self.head_move(x),
+            "jump":   self.head_jump(x),
+            "hook":   self.head_hook(x),
+            "fire":   self.head_fire(x),
+            "aim":    self.head_aim(x),
         }
+    
+
+# class Ar_2(nn.Module):
+#     def __init__(self, input_size, backbone_pretrained=False):
+#         """
+#         Args:
+#             input_size: Taille des variables supplémentaires (position, hp, etc.)
+#             backbone_pretrained: Utiliser les poids ImageNet
+#         """
+#         super(Ar_2, self).__init__()  # FIX: était super(Ar_1, self)
+
+#         #backbone = resnet50(weights=ResNet50_Weights.DEFAULT if backbone_pretrained else None)
+#         backbone = resnet18(weights=ResNet18_Weights.DEFAULT if backbone_pretrained else None)
+#         self.backbone = nn.Sequential(*list(backbone.children())[:-1])  # → (batch, 2048)
+        
+#         for param in self.backbone.parameters():
+#             param.requires_grad = False
+
+#         self.network = nn.Sequential(
+#             nn.Linear(512 + input_size, 128),
+#             nn.ReLU(),
+#             nn.Linear(128, 64),
+#             nn.ReLU(),
+#             nn.Linear(64, 32),
+#             nn.ReLU(),
+#         )
+
+#         # Discrete heads
+#         self.head_move = nn.Linear(32, 3)   # left, none, right
+#         self.head_jump = nn.Linear(32, 2)   # no jump, jump
+#         self.head_hook = nn.Linear(32, 2)   # no hook, hook
+#         self.head_fire = nn.Linear(32, 2)   # no fire, fire
+#         self.head_weapon = nn.Linear(32, 3)   # 0: rien, 1: scroll haut, 2: scroll bas
+
+#         # Continuous head — aim as (sin, cos)
+#         self.head_aim = nn.Linear(32, 2)
+
+#     def forward(self, image, extra_vars):
+#         img_features = self.backbone(image).flatten(1)               # (batch, 2048)
+#         combined = torch.cat([img_features, extra_vars], dim=1)      # (batch, 2048 + input_size)
+#         x = self.network(combined)                                    # (batch, 128)
+
+#         return {
+#             "move": self.head_move(x),   # (batch, 3)
+#             "jump": self.head_jump(x),   # (batch, 2)
+#             "hook": self.head_hook(x),   # (batch, 2)
+#             "fire": self.head_fire(x),   # (batch, 2)
+#             "aim":  self.head_aim(x),    # (batch, 2) ← (sin, cos)
+#         }
 
 
 class Ar_2Loss(nn.Module):
@@ -171,3 +229,5 @@ class Ar_2Loss(nn.Module):
         total_loss += self.aim_weight * self.aim_loss(outputs["aim"], aim_targets)
 
         return total_loss
+    
+
