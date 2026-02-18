@@ -374,7 +374,11 @@ class InputController:
             keysym = XK.XK_space
         else:
             keysym = XK.string_to_keysym(key_char)
-        return self.disp.keysym_to_keycode(keysym)
+        # return self.disp.keysym_to_keycode(keysym)
+        keycode = self.disp.keysym_to_keycode(keysym)
+        print(f"Key {key_char} -> keysym {keysym} -> keycode {keycode}")
+        return keycode
+
 
     def _get_mouse_btn(self, key: str) -> int:
         if key == "mouse_left":        return 1
@@ -456,7 +460,7 @@ class InputController:
         # 2. JUMP — tap direct, exactement comme fire
         #    Si fire marche en tap souris, jump doit marcher en tap clavier
         if jump:
-            logger.debug(f"JUMP envoyé env={self.display_id}")
+            print(f"JUMP envoyé env={self.display_id}")
             self._tap_key(self.keys["jump"])
             
         # 3. FIRE — tap direct
