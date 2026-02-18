@@ -355,16 +355,13 @@ class InputController:
         self.disp = None
         self.last_aim = None
         
-        self._pending_release: Set[str] = set()
-
     def connect_display(self):
         """Initialise la connexion directe au serveur X11 virtuel."""
         display_name = f":{self.display_id}" if getattr(self, "display_id", None) is not None else None
         self.disp = display.Display(display_name)
         self.held_keys.clear()
         self.last_aim = None
-        self._pending_release.clear()
-
+        
     def set_screen_center(self, center_x: int, center_y: int):
         self.screen_center = (center_x, center_y)
 
@@ -441,16 +438,10 @@ class InputController:
 
     def apply_action(self, direction: int, jump: int, fire: int,
                  hook: int, weapon_switch: int, aim_x: float, aim_y: float):
-
         if not self.disp:
             self.connect_display()
 
-        # 1. Relâcher les touches one-shot du tick PRÉCÉDENT
-        for key in list(self._pending_release):
-            self._release_key(key)
-        self._pending_release.clear()
-
-        # 2. MOUVEMENT — hold until release
+        # 1. MOUVEMENT — hold until release
         key_left, key_right = self.keys["left"], self.keys["right"]
         if direction == 0:
             self._hold_key(key_left)
@@ -462,28 +453,26 @@ class InputController:
             self._release_key(key_left)
             self._release_key(key_right)
 
-        # 3. JUMP — one-shot : Press maintenant, Release au prochain tick
+        # 2. JUMP — tap direct, exactement comme fire
+        #    Si fire marche en tap souris, jump doit marcher en tap clavier
         if jump:
-            self._hold_key(self.keys["jump"])
-            self._pending_release.add(self.keys["jump"])
-
-        # 4. FIRE — one-shot : Press maintenant, Release au prochain tick
+            logger.debug(f"JUMP envoyé env={self.display_id}")
+            self._tap_key(self.keys["jump"])
+            
+        # 3. FIRE — tap direct
         if fire:
-            self._hold_key(self.keys["fire"])
-            self._pending_release.add(self.keys["fire"])
+            self._tap_key(self.keys["fire"])
 
-        # 5. HOOK — hold until release
+        # 4. HOOK — hold until release
         self._update_hold(self.keys["hook"], bool(hook))
 
-        # 6. WEAPON SWITCH — scroll (ces événements sont edge-triggered, pas level)
+        # 5. WEAPON SWITCH — tap
         if weapon_switch == 1:
-            self._hold_key("mouse_scroll_up")
-            self._pending_release.add("mouse_scroll_up")
+            self._tap_key("mouse_scroll_up")
         elif weapon_switch == 2:
-            self._hold_key("mouse_scroll_down")
-            self._pending_release.add("mouse_scroll_down")
+            self._tap_key("mouse_scroll_down")
 
-        # 7. VISÉE
+        # 6. VISÉE
         target_x = self.screen_center[0] + int(aim_x * self.aim_radius)
         target_y = self.screen_center[1] + int(aim_y * self.aim_radius)
         if self.last_aim != (target_x, target_y):
@@ -491,7 +480,6 @@ class InputController:
             self.last_aim = (target_x, target_y)
 
         self.disp.sync()
-
 
     # ------------------------------------------------------------------
     # Nettoyage
@@ -505,9 +493,6 @@ class InputController:
         """
         if not self.disp:
             return
-        for key in list(self._pending_release):
-            self._release_key(key)
-        self._pending_release.clear()
         for key in [
             self.keys.get("left"),
             self.keys.get("right"),
