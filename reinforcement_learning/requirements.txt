@@ -8,3 +8,4 @@ pyautogui>=0.9.54
 pyyaml>=6.0
 tensorboard>=2.14.0
 requests
+python-xlib

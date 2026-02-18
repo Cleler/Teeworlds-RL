@@ -14,13 +14,13 @@ services:
       - "8303:8303/tcp"
     restart: unless-stopped
 
-  visualizer:
-    build:
-      context: .
-      dockerfile: Dockerfile.visualizer
-    container_name: tw_visualizer
-    volumes:
-      - ./reinforcement_learning:/app/reinforcement_learning
-    ports:
-      - "5000:5000/tcp"
-    restart: unless-stopped
+  # visualizer:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.visualizer
+  #   container_name: tw_visualizer
+  #   volumes:
+  #     - ./reinforcement_learning:/app/reinforcement_learning
+  #   ports:
+  #     - "5000:5000/tcp"
+  #   restart: unless-stopped
