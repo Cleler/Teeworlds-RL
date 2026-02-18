@@ -1,0 +1,24 @@
+services:
+  teeworlds-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: tw_server
+    volumes:
+      - ./reinforcement_learning:/app/reinforcement_learning
+      - ./teeworlds-game/build-server/teeworlds_srv:/app/teeworlds-game
+    ports:
+      - "8304:8304/udp"
+      - "8304:8304/tcp"
+    restart: unless-stopped
+
+  visualizer:
+    build:
+      context: .
+      dockerfile: Dockerfile.visualizer
+    container_name: tw_visualizer
+    volumes:
+      - ./reinforcement_learning:/app/reinforcement_learning
+    ports:
+      - "5000:5000/tcp"  # Port du Dashboard Web (TCP)
+    restart: unless-stopped

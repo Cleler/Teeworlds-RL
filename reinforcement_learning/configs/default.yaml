@@ -9,6 +9,9 @@ server:
   reconnect_delay: 2.0
   read_timeout: 0.05
 
+visualizer:
+  ip: "192.168.22.116"
+
 capture:
   monitor:
     top: 0

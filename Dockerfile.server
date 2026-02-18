@@ -1,0 +1,11 @@
+FROM debian:trixie
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    bash \
+    zlib1g \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+CMD ["bash", "reinforcement_learning/scripts/launch_server.sh", "./teeworlds_srv"]
