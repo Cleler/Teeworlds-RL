@@ -34,10 +34,11 @@ def select_action(model: Ar_2, image: torch.Tensor, position: torch.Tensor,
     """Epsilon-greedy pour les têtes discrètes + sortie réseau pour aim."""
     action = {}
 
-    if np.random.random() < epsilon:
+    if np.random.uniform(0, 0.5) < epsilon:
         for head, size in HEAD_SIZES.items():
             action[head] = np.random.randint(size)
         action["aim"] = np.random.uniform(-1, 1, size=(2,)).astype(np.float32)
+        print("random_action : ", action)
     else:
         with torch.no_grad():
             outputs = model(image, position)
@@ -60,13 +61,14 @@ def select_actions_batch(model: Ar_2, images: torch.Tensor, positions: torch.Ten
     # Forward en un seul batch pour l'exploitation
     with torch.no_grad():
         outputs = model(images, positions)
-
+    print(epsilon)
     for i in range(n):
         action = {}
         if np.random.random() < epsilon:
             for head, size in HEAD_SIZES.items():
                 action[head] = np.random.randint(size)
             action["aim"] = np.random.uniform(-1, 1, size=(2,)).astype(np.float32)
+            print("random_action : ", action)
         else:
             for head in DISCRETE_HEADS:
                 action[head] = outputs[head][i].argmax().item()
@@ -270,11 +272,17 @@ def train_multi(config: dict):
 
             obs_list = new_obs_list
             print("="*50)
-            print(buffer)
-            print(len(buffer))
+
+            print("len_buffer", len(buffer.buffer))
+            print("type_buffer", type(buffer))
+            print("buffer_pos : ", buffer.buffer[0][0]['position'])
+            print("buffer_fire : ", buffer.buffer[0][1]['fire'])
+            print("buffer_aim : ", buffer.buffer[0][1]['aim'])
+            print("buffer_reward : ", buffer.buffer[0][2])
+            print("buffer_next_state : ", buffer.buffer[0][3]['position'])
+            #print("buffer_aim : ", buffer.buffer[0]['aim'])
             print(min_buffer_size)
             # ---- Entraînement ----
-            print(buffer.buffer[0])
 
             if len(buffer) >= min_buffer_size:
                 loss = train_step(model, target_model, optimizer, criterion,
