@@ -72,6 +72,9 @@ class TeeWorldsEnv(gym.Env):
             key_mapping=key_mapping,
             aim_radius=config["input"]["aim_radius"],
             screen_center=(center_x, center_y),
+            agent_id=self.agent_id, 
+            win_w=config["capture"]["monitor"]["width"],
+            win_h=config["capture"]["monitor"]["height"],
         )
 
         # ---- Paramètres ----

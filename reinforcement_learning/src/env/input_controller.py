@@ -612,6 +612,7 @@ class InputController:
         """
         dir_tw = direction - 1   # 0→-1  1→0  2→+1
         self._seq += 1
+        print(f"[shm write] agent={self.agent_id} path={self._path} seq={self._seq} dir={dir_tw} jump={jump}")
         self._write(dir_tw, int(jump), int(fire), int(hook),
                     int(weapon_switch), float(aim_x), float(aim_y),
                     self.win_w, self.win_h, self._seq)
