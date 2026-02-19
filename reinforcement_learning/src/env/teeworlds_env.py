@@ -230,12 +230,12 @@ class TeeWorldsEnv(gym.Env):
         kills, deaths, damage_dealt = self.econ.get_score(self.agent_id)
         self.episode_kills  += kills
         self.episode_deaths += deaths
-        self.episode_damage += damage_dealt
+        self.episode_damage_dealt += damage_dealt
 
         # ── Rewards combat (priorité haute) ──────────────────────────
-        r  = kills        * self.reward_cfg["kill"]          # +10
-        r += deaths       * self.reward_cfg["death"]         # -2
-        r += damage_dealt * self.reward_cfg["damage_dealt"]  # +1
+        r  = kills        * self.reward_config["kill"]          # +10
+        r += deaths       * self.reward_config["death"]         # -2
+        r += damage_dealt * self.reward_config["damage_dealt"]  # +1
 
         # ── Reward mouvement (priorité basse) ─────────────────────────
         current_pos = self.econ.get_position(self.agent_id)
@@ -262,7 +262,8 @@ class TeeWorldsEnv(gym.Env):
 
             # Fonction carré signée : sign(x) * x² → effet quadratique symétrique
             # immobile total → -scale, mobile total → +scale
-            movement_reward = (x * abs(x)) * self.reward_cfg.get("movement_scale", 5.0)
+            movement_reward = (x * abs(x)) * self.reward_config.get("movement_scale", 5.0)
+            print("move reward :",movement_reward)
             r += movement_reward
 
         self._last_pos = current_pos

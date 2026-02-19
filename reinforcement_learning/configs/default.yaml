@@ -41,8 +41,8 @@ reward:
   death: -2.0
   damage_dealt: 1.0
   survival_bonus: 0.0
-  movement_scale: 0.1
-
+  movement_scale: 10
+  
 # ============================================
 # Multi-environnement (grille de clients)
 # ============================================
@@ -73,7 +73,7 @@ training:
   gamma: 0.99
   eps_start: 1.0
   eps_end: 0.05
-  eps_decay: 100
+  eps_decay: 1_000
   buffer_size: 100_000
   min_buffer_size: 100
   target_update: 1000

@@ -145,7 +145,7 @@ def train_step(model, target_model, optimizer, criterion, buffer, batch_size, de
         dones=batch["dones"],
         aim_targets=batch["aim_targets"],
     )
-
+    print("loss ", loss)
     optimizer.zero_grad()
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
