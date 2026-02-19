@@ -19,8 +19,11 @@ services:
     container_name: tw_dashboard
     volumes:
       - ./reinforcement_learning/src/utils/noVNC:/app/noVNC
+      - ./reinforcement_learning/src/utils/noVNC_patch/novnc.patch:/app/patch/novnc.patch:ro
+      - ./reinforcement_learning/src/utils/noVNC_patch/novnc_dashboard.patch:/app/patch/novnc_dashboard.patch:ro
+      - ./reinforcement_learning/src/utils/noVNC_patch/patch_entrypoint.sh:/app/patch/patch_entrypoint.sh:ro
     working_dir: /app/noVNC
-    command: ["python", "-m", "http.server", "8080"]
+    entrypoint: ["/bin/sh", "/app/patch/patch_entrypoint.sh"]
     ports:
       - "8080:8080"
     restart: unless-stopped
