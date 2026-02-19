@@ -92,7 +92,7 @@ class TeeWorldsEnv(gym.Env):
         self._pos_history = []
         self._pos_history_size = 10
         self._last_pos = None
-
+        self._current_weapon = 0  # 0=marteau, 1=pistolet
 
         # ---- Espaces Gymnasium ----
         obs_h = config["capture"]["obs_height"]
@@ -137,6 +137,7 @@ class TeeWorldsEnv(gym.Env):
         self.episode_damage_dealt = 0
         self._pos_history = []
         self._last_pos = None
+        self._current_weapon = 0
         
         # # Vider le buffer econ
         # self.econ.poll()
@@ -156,16 +157,22 @@ class TeeWorldsEnv(gym.Env):
         # Appliquer l'action
         keys = action["keys"]
         aim = action["aim"]
+        wpn_switch = int(keys[4]) if len(keys) > 4 else 0
         self.controller.apply_action(
             direction=int(keys[0]),
             jump=int(keys[1]),
             fire=int(keys[2]),
             #hook=int(keys[3]),
             hook=0,
-            weapon_switch=int(keys[4]) if len(keys)>4 else 0,
+            weapon_switch=wpn_switch,
             aim_x=float(aim[0]),
             aim_y=float(aim[1]),
         )
+        
+        if wpn_switch == 1:
+            self._current_weapon = (self._current_weapon + 1) % 2
+        elif wpn_switch == 2:
+            self._current_weapon = (self._current_weapon - 1) % 2
 
         elapsed = time.time() - step_start
         sleep_time = self.tick_interval - elapsed
@@ -266,6 +273,39 @@ class TeeWorldsEnv(gym.Env):
             print("dist : ",dist)
             print("move reward :",movement_reward)
             r += movement_reward
+    
+        # ── Reward proximité ennemie selon l'arme ─────────────────────────
+        all_positions = {
+            pid: data.get("pos")
+            for pid, data in self.econ.players.items()
+            if data.get("pos") is not None
+        }
+        my_pid = self.econ.get_real_pid(self.agent_id)
+        my_pos = all_positions.get(my_pid)
+
+        if my_pos and len(all_positions) > 1:
+            # Distance au joueur le plus proche (hors soi-même)
+            enemy_dists = [
+                ((my_pos[0]-p[0])**2 + (my_pos[1]-p[1])**2) ** 0.5
+                for pid, p in all_positions.items()
+                if pid != my_pid and p is not None
+            ]
+            if enemy_dists:
+                nearest = min(enemy_dists)
+                
+                # Normaliser : 0=contact, 1=très loin (500 unités TW)
+                dist_norm = min(nearest / 500.0, 1.0)
+                
+                # x ∈ [-1, 1]
+                # marteau (0) : x=+1 quand proche, x=-1 quand loin
+                # pistolet (1) : x=+1 quand loin, x=-1 quand proche
+                if self._current_weapon == 0:  # marteau
+                    x = 1.0 - 2.0 * dist_norm   # proche→+1, loin→-1
+                else:                            # pistolet
+                    x = 2.0 * dist_norm - 1.0   # loin→+1, proche→-1
+
+                proximity_reward = (x * abs(x)) * self.reward_cfg.get("proximity_scale", 3.0)
+                r += proximity_reward
 
         self._last_pos = current_pos
         return r
