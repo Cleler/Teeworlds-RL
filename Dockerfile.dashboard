@@ -1,0 +1,10 @@
+FROM python:3.11-alpine
+
+RUN apk add --no-cache patch
+
+WORKDIR /app/noVNC
+
+COPY ./reinforcement_learning/src/utils/noVNC_patch/ /app/patch/
+COPY ./reinforcement_learning/src/utils/noVNC/ /app/noVNC/
+
+ENTRYPOINT ["/bin/sh", "/app/patch/patch_entrypoint.sh"]
