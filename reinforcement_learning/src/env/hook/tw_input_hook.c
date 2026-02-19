@@ -49,6 +49,8 @@ static int32_t g_prev_wpn  = 0;
    On calcule le delta depuis la position cible précédente. */
 static float g_prev_aim_x = 0.0f;
 static float g_prev_aim_y = 0.0f;
+static int g_last_tx = -1;
+static int g_last_ty = -1;
 
 /* ── File d'événements ───────────────────────────────────────────── */
 #define Q_SIZE 64
@@ -208,20 +210,31 @@ Uint32 SDL_GetRelativeMouseState(int *x, int *y) {
     static Uint32 (*real)(int *, int *) = NULL;
     if (!real) real = dlsym(RTLD_NEXT, "SDL_GetRelativeMouseState");
 
-    /* Vider l'état réel (delta physique qu'on ignore) */
-    real(x, y);
+    /* Vider le delta physique accumulé par SDL */
+    int rx, ry;
+    real(&rx, &ry);
 
     Uint32 state = 0;
     if (g_shm) {
         int w = g_shm->win_w > 0 ? g_shm->win_w : 800;
         int h = g_shm->win_h > 0 ? g_shm->win_h : 600;
 
-        /* Position absolue cible en pixels */
+        /* Position absolue cible */
         int tx = (int)(w / 2 + g_shm->aim_x * (w / 2));
         int ty = (int)(h / 2 + g_shm->aim_y * (h / 2));
 
-        if (x) *x = tx;
-        if (y) *y = ty;
+        /* Premier appel : pas de delta */
+        if (g_last_tx < 0) {
+            g_last_tx = tx;
+            g_last_ty = ty;
+        }
+
+        /* Delta depuis le dernier appel → c'est ce que TW attend */
+        if (x) *x = tx - g_last_tx;
+        if (y) *y = ty - g_last_ty;
+
+        g_last_tx = tx;
+        g_last_ty = ty;
 
         if (g_shm->hook)
             state |= SDL_BUTTON(SDL_BUTTON_RIGHT);
