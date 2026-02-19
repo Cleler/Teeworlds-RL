@@ -5,14 +5,23 @@ Lance N clients Teeworlds, les positionne en grille sur l'écran,
 et crée un environnement Gymnasium par client. Chaque env a sa propre
 capture d'écran et ses propres inputs ciblés via xdotool.
 
+Chaque Xvfb virtuel est automatiquement associé à un x11vnc + websockify,
+ce qui permet de visualiser les agents en direct via noVNC sans script externe.
+
+Ports par agent i :
+    Xvfb     : DISPLAY :100+i
+    VNC      : 5900+i  (x11vnc)
+    WebSocket: 6080+i  (websockify → noVNC)
+
 Workflow :
     1. Lancer le(s) serveur(s) TW
     2. Lancer le MultiEnvManager qui ouvre N clients
     3. Chaque client rejoint le serveur automatiquement
     4. L'agent RL step() sur tous les envs en parallèle
+    5. Dashboard noVNC accessible sur http://<host>:8080
 
 Prérequis :
-    sudo apt install xdotool xdg-utils
+    sudo apt install x11vnc websockify
 """
 
 import subprocess
@@ -28,6 +37,11 @@ from reinforcement_learning.src.env.teeworlds_env import TeeWorldsEnv
 from reinforcement_learning.src.env.econ_client import EconClient
 
 logger = logging.getLogger(__name__)
+
+# ── Ports de base ─────────────────────────────────────────────────────────────
+XVFB_BASE_DISPLAY = 100   # DISPLAY :100, :101, ...
+VNC_BASE_PORT     = 5900  # VNC     5900, 5901, ...
+WS_BASE_PORT      = 6080  # WS      6080, 6081, ... (noVNC)
 
 
 class MultiEnvManager:
@@ -77,81 +91,154 @@ class MultiEnvManager:
         self.envs: list[TeeWorldsEnv] = []
         self.executor = ThreadPoolExecutor(max_workers=n_envs)
 
-    # ------------------------------------------------------------------
-    # Lancement des clients
-    # ------------------------------------------------------------------
+        # Processus VNC / WS (un par agent)
+        self._vnc_procs:  list[subprocess.Popen] = []
+        self._ws_procs:   list[subprocess.Popen] = []
+        self.display_ids: list[int] = []
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Helpers VNC / Websockify
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _check_command(cmd: str) -> bool:
+        """Vérifie si un binaire est disponible dans le PATH."""
+        try:
+            subprocess.run(["which", cmd], capture_output=True, check=True)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def _launch_vnc_for(self, agent_id: int, display_id: int) -> bool:
+        """
+        Lance x11vnc + websockify pour l'agent donné.
+
+        x11vnc écoute sur localhost:VNC_BASE_PORT+agent_id
+        websockify expose sur 0.0.0.0:WS_BASE_PORT+agent_id → localhost:vnc_port
+
+        Returns:
+            True si les deux processus ont démarré, False sinon.
+        """
+        vnc_port = VNC_BASE_PORT + agent_id
+        ws_port  = WS_BASE_PORT  + agent_id
+
+        # ── x11vnc ────────────────────────────────────────────────────────────
+        if not self._check_command("x11vnc"):
+            logger.warning(
+                f"[Agent {agent_id}] x11vnc introuvable — streaming VNC désactivé. "
+                "Installez-le avec : sudo apt install x11vnc"
+            )
+            self._vnc_procs.append(None)
+            self._ws_procs.append(None)
+            return False
+
+        vnc_proc = subprocess.Popen(
+            [
+                "x11vnc",
+                "-display", f":{display_id}",
+                "-rfbport", str(vnc_port),
+                "-listen", "localhost",   # n'exposer VNC que localement
+                "-nopw",                  # pas de mot de passe VNC
+                "-xkb",                   # meilleure gestion du clavier
+                "-forever",               # ne pas quitter après la première déconnexion
+                "-quiet",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._vnc_procs.append(vnc_proc)
+        logger.info(
+            f"[Agent {agent_id}] x11vnc démarré — "
+            f"DISPLAY=:{display_id} → localhost:{vnc_port} (PID={vnc_proc.pid})"
+        )
+
+        # Petit délai pour que x11vnc soit prêt avant websockify
+        time.sleep(0.5)
+
+        # ── websockify ─────────────────────────────────────────────────────────
+        if not self._check_command("websockify"):
+            logger.warning(
+                f"[Agent {agent_id}] websockify introuvable — streaming WebSocket désactivé. "
+                "Installez-le avec : sudo apt install websockify"
+            )
+            self._ws_procs.append(None)
+            return False
+
+        ws_proc = subprocess.Popen(
+            [
+                "websockify",
+                f"0.0.0.0:{ws_port}",         # écoute WebSocket (exposé)
+                f"localhost:{vnc_port}",        # cible VNC (local)
+                "-D",                          # mode daemon (non-bloquant)
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._ws_procs.append(ws_proc)
+        logger.info(
+            f"[Agent {agent_id}] websockify démarré — "
+            f"0.0.0.0:{ws_port} → localhost:{vnc_port} (PID={ws_proc.pid})"
+        )
+
+        return True
+
+    def _log_stream_summary(self):
+        """Affiche un récapitulatif des ports WebSocket disponibles."""
+        lines = ["", "━" * 60, "  📺  Flux VNC disponibles", "━" * 60]
+        for i in range(self.n_envs):
+            ws_port = WS_BASE_PORT + i
+            lines.append(f"  Agent {i:2d} → ws://<host>:{ws_port}  (noVNC port)")
+        lines += [
+            "━" * 60,
+            "  Dashboard : http://<host>:8080/dashboard.html",
+            "━" * 60,
+            "",
+        ]
+        logger.info("\n".join(lines))
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Lancement des clients
+    # ──────────────────────────────────────────────────────────────────────────
 
     def launch_clients(self, connect_delay: float = 2.0):
         """
-        Lance N clients TW et les positionne en grille.
-
-        Chaque client est lancé avec des arguments pour se connecter
-        automatiquement au serveur.
+        Lance N clients TW, chacun sur son propre Xvfb.
+        Pour chaque Xvfb, lance également x11vnc + websockify.
         """
         logger.info(f"Lancement de {self.n_envs} clients Teeworlds...")
-        
+
         def _log_hook(proc, agent_id):
             for line in proc.stderr:
                 logger.info(f"[hook/{agent_id}] {line.decode().rstrip()}")
 
-        self.display_ids = []
-
-        # for i in range(self.n_envs):
-        #     row = i // self.grid_cols
-        #     col = i % self.grid_cols
-        #     x = col * self.cell_w
-        #     y = row * self.cell_h
-
-        #     # Lancer le client en mode fenêtré avec la bonne résolution
-        #     process = subprocess.Popen(
-        #         [
-        #             self.tw_binary,
-        #             # Mode fenêtré
-        #             "gfx_fullscreen", "0",
-        #             "gfx_borderless", "0",
-        #             # Résolution de la cellule
-        #             "gfx_screen_width", str(self.cell_w),
-        #             "gfx_screen_height", str(self.cell_h),
-        #             # Connexion auto au serveur
-        #             f"connect {self.server_ip}:{self.server_port}",
-        #         ],
-        #         stdout=subprocess.DEVNULL,
-        #         stderr=subprocess.DEVNULL,
-        #     )
-        #     self.client_processes.append(process)
-        #     logger.info(f"Client {i} lancé (PID={process.pid})")
-
-        #     # Petit délai pour laisser la fenêtre apparaître
-        #     time.sleep(connect_delay)
-
-        #     # Trouver la fenêtre et la positionner
-        #     window_id = self._find_newest_tw_window()
-        #     if window_id:
-        #         self.client_window_ids.append(window_id)
-        #         self._position_window(window_id, x, y, self.cell_w, self.cell_h)
-        #         logger.info(
-        #             f"Client {i}: fenêtre {window_id} → "
-        #             f"pos=({x},{y}) size={self.cell_w}x{self.cell_h}"
-        #         )
-        #     else:
-        #         logger.error(f"Client {i}: fenêtre non trouvée!")
-        #         self.client_window_ids.append(None)
         for i in range(self.n_envs):
-            display_id = 100 + i  # On utilise les écrans :100, :101, :102...
+            display_id = XVFB_BASE_DISPLAY + i
             self.display_ids.append(display_id)
 
-            # 1. Lancer un écran virtuel invisible
+            # ── 1. Xvfb ───────────────────────────────────────────────────────
             xvfb_proc = subprocess.Popen(
-                ["Xvfb", f":{display_id}", "-screen", "0", f"{self.cell_w}x{self.cell_h}x24"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                [
+                    "Xvfb",
+                    f":{display_id}",
+                    "-screen", "0", f"{self.cell_w}x{self.cell_h}x24",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
             self.client_processes.append(xvfb_proc)
-            time.sleep(0.5) # Le temps que l'écran s'allume
+            logger.info(
+                f"[Agent {i}] Xvfb démarré — "
+                f"DISPLAY=:{display_id} {self.cell_w}x{self.cell_h}x24 (PID={xvfb_proc.pid})"
+            )
+            time.sleep(0.5)  # Laisser l'écran virtuel s'initialiser
 
-            # 2. Lancer Teeworlds DANS cet écran virtuel
+            # ── 2. x11vnc + websockify pour cet écran ─────────────────────────
+            self._launch_vnc_for(i, display_id)
+
+            # ── 3. Client Teeworlds sur l'écran virtuel ────────────────────────
             env_vars = os.environ.copy()
             env_vars["DISPLAY"] = f":{display_id}"
+
             hook_path = os.path.join(
                 os.path.dirname(__file__),  # src/env/
                 "hook", "tw_input_hook.so"
@@ -163,223 +250,149 @@ class MultiEnvManager:
                 [
                     self.tw_binary,
                     "gfx_fullscreen 1",
-                    f"gfx_screen_width {str(self.cell_w)}",
-                    f"gfx_screen_height {str(self.cell_h)}",
+                    f"gfx_screen_width {self.cell_w}",
+                    f"gfx_screen_height {self.cell_h}",
                     f"player_name Bot_{i}",
                     f"connect {self.server_ip}:{self.server_port}",
                 ],
-                env = env_vars,
+                env=env_vars,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
             )
             self.client_processes.append(tw_proc)
-            threading.Thread(target=_log_hook, args=(tw_proc, i), daemon=True).start()
-            logger.info(f"Client {i} lancé sur l'écran caché DISPLAY=:{display_id}")
+            threading.Thread(
+                target=_log_hook, args=(tw_proc, i), daemon=True
+            ).start()
+            logger.info(
+                f"[Agent {i}] Client TW lancé — "
+                f"DISPLAY=:{display_id} (PID={tw_proc.pid})"
+            )
+
             time.sleep(connect_delay)
 
-    def _find_newest_tw_window(self) -> Optional[str]:
-        """Trouve la fenêtre TW la plus récente non encore assignée."""
-        try:
-            result = subprocess.run(
-                ["xdotool", "search", "--name", "Teeworlds"],
-                capture_output=True, text=True, timeout=5
-            )
-            all_windows = [w.strip() for w in result.stdout.strip().split("\n") if w.strip()]
+        self._log_stream_summary()
 
-            # Trouver une fenêtre pas encore assignée
-            for wid in reversed(all_windows):  # les plus récentes en dernier
-                if wid not in self.client_window_ids:
-                    return wid
-
-            return None
-        except Exception as e:
-            logger.error(f"Erreur recherche fenêtre: {e}")
-            return None
-
-    def _position_window(self, window_id: str, x: int, y: int, w: int, h: int):
-        """Positionne et redimensionne une fenêtre."""
-        if not window_id:
-            return
-        try:
-            # Dé-maximiser / dé-fullscreen d'abord
-            subprocess.run(
-                ["wmctrl", "-i", "-r", window_id, "-b", "remove,maximized_vert,maximized_horz,fullscreen"],
-                capture_output=True, timeout=5
-            )
-            time.sleep(0.3)
-
-            # Redimensionner puis positionner
-            subprocess.run(
-                ["xdotool", "windowsize", "--sync", window_id, str(w), str(h)],
-                capture_output=True, timeout=5
-            )
-            subprocess.run(
-                ["xdotool", "windowmove", "--sync", window_id, str(x), str(y)],
-                capture_output=True, timeout=5
-            )
-        except Exception as e:
-            logger.error(f"Erreur positionnement fenêtre {window_id}: {e}")
-
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────────
     # Création des environnements
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────────
 
     def create_envs(self):
-        """Crée un TeeWorldsEnv par client, chacun ciblant sa fenêtre."""
+        """Crée un TeeWorldsEnv par client, chacun ciblant son Xvfb."""
         logger.info("Création des environnements...")
 
         self.shared_econ = EconClient(
             host=self.server_ip,
             port=self.config["server"]["econ_port"],
             password=self.config["server"]["econ_password"],
-            read_timeout=self.config["server"]["read_timeout"]
+            read_timeout=self.config["server"]["read_timeout"],
         )
         if not self.shared_econ.connect():
             logger.error("Échec de connexion du EconClient partagé !")
             return
-        
-        # for i, window_id in enumerate(self.client_window_ids):
-        #     if window_id is None:
-        #         logger.warning(f"Env {i} ignoré: pas de fenêtre")
-        #         continue
 
-        #     row = i // self.grid_cols
-        #     col = i % self.grid_cols
-        #     x = col * self.cell_w
-        #     y = row * self.cell_h
-
-        #     # Créer une config spécifique à cet env
-        #     env_config = self._make_env_config(i, x, y)
-
-        #     # env = TeeWorldsEnv(env_config)
-        #     env = TeeWorldsEnv(env_config, shared_econ=self.shared_econ, agent_id=i)
-
-        #     # Injecter le window_id directement au lieu de chercher
-        #     env.controller.window_id = window_id
-        #     env.controller.win_x = x
-        #     env.controller.win_y = y
-        #     env.controller.win_w = self.cell_w
-        #     env.controller.win_h = self.cell_h
-        #     env.controller.screen_center = (x + self.cell_w // 2, y + self.cell_h // 2)
-
-        #     # Configurer la capture pour cette cellule
-        #     env.capture.monitor = {
-        #         "top": y,
-        #         "left": x,
-        #         "width": self.cell_w,
-        #         "height": self.cell_h,
-        #     }
-        #     env.capture.start()
-
-        #     # Connexion econ (partagée ou séparée selon le setup)
-        #     # if not env.econ.connect():
-        #     #     logger.error(f"Env {i}: échec connexion econ")
-        #     #     continue
-
-        #     self.envs.append(env)
-        #     logger.info(f"Env {i} créé: fenêtre={window_id} capture=({x},{y},{self.cell_w},{self.cell_h})")
         for i, display_id in enumerate(self.display_ids):
-            env_config = self._make_env_config(i, 0, 0)
+            env_config = self._make_env_config(i)
             env = TeeWorldsEnv(env_config, shared_econ=self.shared_econ, agent_id=i)
-            
+
             env.controller.display_id = display_id
-            env.controller.connect_display(display_id) 
+            env.controller.connect_display(display_id)
             env.controller.screen_center = (self.cell_w // 2, self.cell_h // 2)
             env.capture.display_id = display_id
-            
+
             env.setup()
-            
+
             self.envs.append(env)
+            logger.info(f"[Agent {i}] Environnement prêt (DISPLAY=:{display_id})")
 
         logger.info(f"{len(self.envs)}/{self.n_envs} environnements prêts")
 
-    def _make_env_config(self, env_index: int, x: int, y: int) -> dict:
+    def _make_env_config(self, env_index: int) -> dict:
         """Crée une config dédiée pour un env (copie profonde + ajustements)."""
         import copy
         cfg = copy.deepcopy(self.config)
-
         cfg["capture"]["monitor"] = {
             "top": 0,
             "left": 0,
             "width": self.cell_w,
             "height": self.cell_h,
         }
-
         return cfg
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────────
     # Interface parallèle
-    # ------------------------------------------------------------------
-
-    # def reset_all(self) -> list[dict]:
-    #     """Reset tous les envs en parallèle."""
-    #     if hasattr(self, 'shared_econ'):
-    #         self.shared_econ.restart_round()
-    #         self.shared_econ.poll()
-    #     def _reset(env):
-    #         return env.reset()
-
-    #     futures = [self.executor.submit(_reset, env) for env in self.envs]
-    #     results = [f.result() for f in futures]
-        
-    #     return [obs for obs, info in results]
+    # ──────────────────────────────────────────────────────────────────────────
 
     def reset_all(self) -> list[dict]:
         """Reset tous les envs en parallèle."""
-        if hasattr(self, 'shared_econ'):
+        if hasattr(self, "shared_econ"):
             self.shared_econ.restart_round()
             self.shared_econ.poll()
 
         def _reset(env):
             obs, info = env.reset()
-            print(f"[RESET] env={id(env)}")
-            print(f"  position : {obs['position']}")
-            print(f"  image shape : {obs['image'].shape}")
-            print(f"  image min/max : {obs['image'].min()} / {obs['image'].max()}")
-            print(f"  info : {info}")
+            logger.debug(
+                f"[RESET] env={id(env)} "
+                f"pos={obs['position']} "
+                f"img={obs['image'].shape} "
+                f"min/max={obs['image'].min()}/{obs['image'].max()}"
+            )
             return obs, info
 
         futures = [self.executor.submit(_reset, env) for env in self.envs]
         results = [f.result() for f in futures]
-
         return [obs for obs, info in results]
 
-    def step_all(self, actions):
-        # results = []
-        # for i, (env, action) in enumerate(zip(self.envs, actions)):
-        #     logger.debug(f"Stepping env {i}...")
-        #     results.append(env.step(action))
-        #     logger.debug(f"Env {i} done")
-        # return results
-
+    def step_all(self, actions) -> list:
+        """Step tous les envs en parallèle puis poll econ."""
         def _step(args):
             env, action = args
             return env.step(action)
 
-        futures = [self.executor.submit(_step, (env, act)) for env, act in zip(self.envs, actions)]
+        futures = [
+            self.executor.submit(_step, (env, act))
+            for env, act in zip(self.envs, actions)
+        ]
         results = [f.result() for f in futures]
 
-        if hasattr(self, 'shared_econ'):
+        if hasattr(self, "shared_econ"):
             self.shared_econ.poll()
-            
+
         return results
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────────
     # Nettoyage
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────────
 
     def close(self):
-        """Ferme tout : envs, clients, threads."""
+        """Ferme tout : envs, clients TW, x11vnc, websockify, Xvfb."""
         logger.info("Fermeture du MultiEnvManager...")
 
-        # Fermer les envs
+        # Fermer les envs Gymnasium
         for env in self.envs:
             try:
                 env.close()
             except Exception:
                 pass
 
-        # Tuer les clients TW
+        # Arrêter websockify
+        for proc in self._ws_procs:
+            if proc is not None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=3)
+                except Exception:
+                    proc.kill()
+
+        # Arrêter x11vnc
+        for proc in self._vnc_procs:
+            if proc is not None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=3)
+                except Exception:
+                    proc.kill()
+
+        # Tuer les clients TW et Xvfb
         for proc in self.client_processes:
             try:
                 proc.terminate()
@@ -387,7 +400,9 @@ class MultiEnvManager:
             except Exception:
                 proc.kill()
 
-        if hasattr(self, 'shared_econ'):
+        # Déconnecter econ partagé
+        if hasattr(self, "shared_econ"):
             self.shared_econ.disconnect()
+
         self.executor.shutdown(wait=False)
         logger.info("Tout fermé")
