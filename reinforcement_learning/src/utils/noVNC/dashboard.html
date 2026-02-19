@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Teeworlds RL - Live Dashboard</title>
+    <style>
+        body { background: #1e1e1e; color: #fff; font-family: sans-serif; text-align: center; margin: 20px; }
+        h1 { color: #4CAF50; }
+        .info { color: #aaa; margin-bottom: 20px; font-size: 0.9em; }
+        .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; }
+        .bot-card { background: #2d2d2d; padding: 10px; border-radius: 8px; border: 2px solid #444; }
+        .bot-card h3 { margin: 0 0 10px 0; color: #ddd; }
+        iframe { width: 400px; height: 300px; border: none; background: #000; }
+    </style>
+</head>
+<body>
+    <h1>Teeworlds RL - Dashboard (Docker) 📺</h1>
+    <div class="info" id="status-info">Chargement...</div>
+    
+    <div class="grid" id="video-grid">
+        </div>
+
+    <script>
+        // 1. Récupérer les paramètres depuis l'URL (ou utiliser les valeurs par défaut)
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Nombre d'agents (12 par défaut)
+        const nEnvs = parseInt(urlParams.get('envs')) || 12; 
+        
+        // L'IP de ta machine d'entraînement (192.168.22.116 par défaut)
+        const host = urlParams.get('host') || '192.168.22.106'; 
+
+        // 2. Mettre à jour le texte d'information
+        document.getElementById('status-info').innerHTML = 
+            `Affichage de <b>${nEnvs}</b> agents | Cible VNC : <b>${host}</b><br>` +
+            `<i>Astuce : Modifiez l'URL pour changer ces valeurs (ex: ?envs=16&host=1.2.3.4)</i>`;
+
+        // 3. Générer la grille dynamiquement
+        const grid = document.getElementById('video-grid');
+
+        for (let i = 0; i < nEnvs; i++) {
+            const port = 6080 + i; // Le port commence à 6080
+            
+            // Créer la carte (conteneur)
+            const card = document.createElement('div');
+            card.className = 'bot-card';
+            
+            // Créer le titre
+            const title = document.createElement('h3');
+            title.textContent = 'Agent ' + i;
+            
+            // Créer l'iframe noVNC
+            const iframe = document.createElement('iframe');
+            // On pointe vers vnc_lite.html fourni par le repo noVNC
+            iframe.src = `vnc_lite.html?host=${host}&port=${port}&autoconnect=true&resize=scale`;
+            
+            // Assembler et ajouter à la page
+            card.appendChild(title);
+            card.appendChild(iframe);
+            grid.appendChild(card);
+        }
+    </script>
+</body>
+</html>
