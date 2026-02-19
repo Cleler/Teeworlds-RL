@@ -109,9 +109,13 @@ static void sync_shm(void) {
     TWInputShm s;
     memcpy(&s, g_shm, sizeof(s));
 
+    fprintf(stderr, "[hook] seq=%lu dir=%d jump=%d fire=%d hook=%d aim=(%.2f,%.2f)\n",
+        s.seq, s.direction, s.jump, s.fire, s.hook, s.aim_x, s.aim_y);
+
     /* ── Direction (A / D) ─────────────────────────────────────────
        KEYUP de l'ancienne direction, KEYDOWN de la nouvelle */
     if (s.direction != g_prev_dir) {
+        fprintf(stderr, "[hook] EVENT: dir %d→%d\n", g_prev_dir, s.direction);
         if (g_prev_dir == -1) push_keyup(SDL_SCANCODE_A, SDLK_a);
         if (g_prev_dir ==  1) push_keyup(SDL_SCANCODE_D, SDLK_d);
         if (s.direction == -1) push_keydown(SDL_SCANCODE_A, SDLK_a);
@@ -124,6 +128,7 @@ static void sync_shm(void) {
        TW vérifie m_Jumped&1 — il faut que -jump (KEYUP) passe d'abord
        pour reset le bit, puis +jump (KEYDOWN) pour déclencher le saut. */
     if (s.jump) {
+        fprintf(stderr, "[hook] EVENT: KEYUP+KEYDOWN(space)\n");
         if (g_prev_jump) {
             /* Déjà à 1 : créer un edge pour permettre un nouveau saut */
             push_keyup(SDL_SCANCODE_SPACE, SDLK_SPACE);
