@@ -1,0 +1,13 @@
+diff --git a/vnc_lite.html b/vnc_lite.html
+index 79d4814..1255a7f 100644
+--- a/vnc_lite.html
++++ b/vnc_lite.html
+@@ -169,7 +169,7 @@
+ </head>
+ 
+ <body>
+-    <div id="top_bar">
++    <div id="top_bar" style="display: none;">
+         <div id="status">Loading</div>
+         <div id="sendCtrlAltDelButton">Send CtrlAltDel</div>
+     </div>

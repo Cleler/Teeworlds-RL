@@ -10,7 +10,7 @@
         .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; }
         .bot-card { background: #2d2d2d; padding: 10px; border-radius: 8px; border: 2px solid #444; }
         .bot-card h3 { margin: 0 0 10px 0; color: #ddd; }
-        iframe { width: 400px; height: 300px; border: none; background: #000; }
+        iframe { width: 480px; height: 270px; border: none; background: #000; overflow: hidden; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -51,8 +51,9 @@
             
             // Créer l'iframe noVNC
             const iframe = document.createElement('iframe');
+            iframe.setAttribute('scrolling', 'no');
             // On pointe vers vnc_lite.html fourni par le repo noVNC
-            iframe.src = `vnc_lite.html?host=${host}&port=${port}&autoconnect=true&resize=scale`;
+            iframe.src = `vnc_lite.html?host=${host}&port=${port}&autoconnect=true&resize=scale&scale=true`;
             
             // Assembler et ajouter à la page
             card.appendChild(title);

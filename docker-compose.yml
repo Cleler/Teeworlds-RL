@@ -14,11 +14,11 @@ services:
       - "8303:8303/tcp"
     restart: unless-stopped
 
-dashboard:
+  dashboard:
     image: python:3.11-alpine
     container_name: tw_dashboard
     volumes:
-      - ./reinforcement_learning/utils/noVNC:/app/noVNC
+      - ./reinforcement_learning/src/utils/noVNC:/app/noVNC
     working_dir: /app/noVNC
     command: ["python", "-m", "http.server", "8080"]
     ports:
