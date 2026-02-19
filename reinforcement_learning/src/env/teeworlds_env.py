@@ -154,8 +154,7 @@ class TeeWorldsEnv(gym.Env):
         aim = action["aim"]
         self.controller.apply_action(
             direction=int(keys[0]),
-            #jump=int(keys[1]),
-            jump=1,
+            jump=int(keys[1]),
             fire=int(keys[2]),
             #hook=int(keys[3]),
             hook=0,
