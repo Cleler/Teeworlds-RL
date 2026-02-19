@@ -89,6 +89,10 @@ class TeeWorldsEnv(gym.Env):
         self.episode_kills = 0
         self.episode_deaths = 0
         self.episode_damage_dealt = 0
+        self._pos_history = []
+        self._pos_history_size = 10
+        self._last_pos = None
+
 
         # ---- Espaces Gymnasium ----
         obs_h = config["capture"]["obs_height"]
@@ -131,6 +135,8 @@ class TeeWorldsEnv(gym.Env):
         self.episode_kills = 0
         self.episode_deaths = 0
         self.episode_damage_dealt = 0
+        self._pos_history = []
+        self._last_pos = None
 
         self.last_step_time = time.time()
         
@@ -226,18 +232,50 @@ class TeeWorldsEnv(gym.Env):
 
     def _compute_reward(self) -> float:
         kills, deaths, damage_dealt = self.econ.get_score(self.agent_id)
-        self.episode_kills += kills
+        self.episode_kills  += kills
         self.episode_deaths += deaths
-        self.episode_damage_dealt += damage_dealt
+        self.episode_damage += damage_dealt
 
-        reward = 0.0
-        reward += kills * self.reward_config["kill"]
-        reward += deaths * self.reward_config["death"]
-        reward += damage_dealt * self.reward_config["damage_dealt"]
-        reward += self.reward_config["survival_bonus"]
-        if reward > 0.1:
-            print("reward :",reward,kills,deaths,damage_dealt,self.reward_config["survival_bonus"] )
-        return reward
+        # ── Rewards combat (priorité haute) ──────────────────────────
+        r  = kills        * self.reward_cfg["kill"]          # +10
+        r += deaths       * self.reward_cfg["death"]         # -2
+        r += damage_dealt * self.reward_cfg["damage_dealt"]  # +1
+
+        # ── Reward mouvement (priorité basse) ─────────────────────────
+        current_pos = self.econ.get_position(self.agent_id)
+        
+        if self._last_pos is not None:
+            # Distance parcourue depuis le dernier step
+            dx = current_pos[0] - self._last_pos[0]
+            dy = current_pos[1] - self._last_pos[1]
+            dist = (dx**2 + dy**2) ** 0.5
+
+            # Historique pour détecter la stagnation
+            self._pos_history.append(current_pos)
+            if len(self._pos_history) > self._pos_history_size:
+                self._pos_history.pop(0)
+
+            # Dispersion sur la fenêtre glissante
+            # Si l'agent tourne en rond, la dispersion sera faible
+            if len(self._pos_history) >= 3:
+                xs = [p[0] for p in self._pos_history]
+                ys = [p[1] for p in self._pos_history]
+                spread = ((max(xs)-min(xs))**2 + (max(ys)-min(ys))**2) ** 0.5
+                # Normaliser : 200 unités TW = déplacement significatif
+                spread_norm = min(spread / 200.0, 1.0)
+            else:
+                spread_norm = 0.0
+
+            # Reward mouvement :
+            # - bonus si l'agent s'est déplacé ce step
+            # - multiplié par la dispersion (anti-rotation sur place)
+            # - plafonné pour rester sous le reward combat
+            move_bonus = min(dist / 50.0, 0.3) * (0.5 + 0.5 * spread_norm)
+            r += move_bonus * self.reward_cfg.get("movement_scale", 0.1)
+
+        self._last_pos = current_pos
+        return r
+
 
     def _get_info(self) -> dict:
         return {
