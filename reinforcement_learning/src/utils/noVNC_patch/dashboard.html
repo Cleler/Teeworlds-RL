@@ -4,62 +4,79 @@
     <meta charset="UTF-8">
     <title>Teeworlds RL - Live Dashboard</title>
     <style>
-        body { background: #1e1e1e; color: #fff; font-family: sans-serif; text-align: center; margin: 20px; }
-        h1 { color: #4CAF50; }
-        .info { color: #aaa; margin-bottom: 20px; font-size: 0.9em; }
-        .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; }
-        .bot-card { background: #2d2d2d; padding: 10px; border-radius: 8px; border: 2px solid #444; }
-        .bot-card h3 { margin: 0 0 10px 0; color: #ddd; }
-        iframe { width: 480px; height: 270px; border: none; background: #000; overflow: hidden; pointer-events: none; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #121212; color: #fff; font-family: 'Segoe UI', sans-serif; padding: 12px; }
+        header { text-align: center; margin-bottom: 14px; }
+        header h1 { font-size: 1.4rem; color: #4CAF50; }
+        header .info { color: #888; font-size: 0.78rem; margin-top: 4px; }
+        header .info b { color: #bbb; }
+        #video-grid { display: grid; gap: 10px; width: 100%; }
+        .bot-card { background: #1e1e1e; border: 1px solid #333; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+        .bot-card h3 { background: #2a2a2a; font-size: 0.8rem; color: #ccc; padding: 5px 10px; border-bottom: 1px solid #333; flex-shrink: 0; }
+        .iframe-wrapper { position: relative; width: 100%; padding-bottom: 75%; background: #000; }
+        .iframe-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
     </style>
 </head>
 <body>
-    <h1>Teeworlds RL - Dashboard (Docker) 📺</h1>
-    <div class="info" id="status-info">Chargement...</div>
-    
-    <div class="grid" id="video-grid">
-        </div>
-
+    <header>
+        <h1>Teeworlds RL — Dashboard 📺</h1>
+        <div class="info" id="status-info">Chargement…</div>
+    </header>
+    <div id="video-grid"></div>
     <script>
-        // 1. Récupérer les paramètres depuis l'URL (ou utiliser les valeurs par défaut)
         const urlParams = new URLSearchParams(window.location.search);
-        
-        // Nombre d'agents (12 par défaut)
-        const nEnvs = parseInt(urlParams.get('envs')) || 12; 
-        
-        // L'IP de ta machine d'entraînement (192.168.22.116 par défaut)
-        const host = urlParams.get('host') || '192.168.22.106'; 
 
-        // 2. Mettre à jour le texte d'information
-        document.getElementById('status-info').innerHTML = 
-            `Affichage de <b>${nEnvs}</b> agents | Cible VNC : <b>${host}</b><br>` +
-            `<i>Astuce : Modifiez l'URL pour changer ces valeurs (ex: ?envs=16&host=1.2.3.4)</i>`;
-
-        // 3. Générer la grille dynamiquement
-        const grid = document.getElementById('video-grid');
-
-        for (let i = 0; i < nEnvs; i++) {
-            const port = 6080 + i; // Le port commence à 6080
-            
-            // Créer la carte (conteneur)
-            const card = document.createElement('div');
-            card.className = 'bot-card';
-            
-            // Créer le titre
-            const title = document.createElement('h3');
-            title.textContent = 'Agent ' + i;
-            
-            // Créer l'iframe noVNC
-            const iframe = document.createElement('iframe');
-            iframe.setAttribute('scrolling', 'no');
-            // On pointe vers vnc_lite.html fourni par le repo noVNC
-            iframe.src = `vnc_lite.html?host=${host}&port=${port}&autoconnect=true&resize=scale&scale=true`;
-            
-            // Assembler et ajouter à la page
-            card.appendChild(title);
-            card.appendChild(iframe);
-            grid.appendChild(card);
+        async function loadConfig() {
+            try {
+                const res = await fetch('/config.json');
+                if (!res.ok) throw new Error();
+                const cfg = await res.json();
+                return {
+                    nEnvs: parseInt(urlParams.get('envs')) || cfg.n_envs || 12,
+                    cols:  parseInt(urlParams.get('cols')) || cfg.cols   || 4,
+                    host:  urlParams.get('host')           || cfg.host   || '127.0.0.1',
+                };
+            } catch {
+                return {
+                    nEnvs: parseInt(urlParams.get('envs')) || 12,
+                    cols:  parseInt(urlParams.get('cols')) || 4,
+                    host:  urlParams.get('host')           || '127.0.0.1',
+                };
+            }
         }
+
+        async function init() {
+            const { nEnvs, cols, host } = await loadConfig();
+
+            document.getElementById('status-info').innerHTML =
+                `<b>${nEnvs}</b> agents · VNC : <b>${host}</b> · <i>override via ?envs=N&cols=N&host=x.x.x.x</i>`;
+
+            const grid = document.getElementById('video-grid');
+            grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+            for (let i = 0; i < nEnvs; i++) {
+                const wsPort = 6080 + i;
+                const card = document.createElement('div');
+                card.className = 'bot-card';
+
+                const title = document.createElement('h3');
+                title.textContent = `Agent ${i}  —  :${wsPort}`;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'iframe-wrapper';
+
+                const iframe = document.createElement('iframe');
+                iframe.setAttribute('scrolling', 'no');
+                iframe.src = `vnc_lite.html?host=${host}&port=${wsPort}&autoconnect=true&resize=scale&scale=true`;
+
+                wrapper.appendChild(iframe);
+                card.appendChild(title);
+                card.appendChild(wrapper);
+                grid.appendChild(card);
+            }
+        }
+
+        init();
     </script>
 </body>
 </html>

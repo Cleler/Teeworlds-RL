@@ -5,6 +5,9 @@ RUN apk add --no-cache patch
 WORKDIR /app/noVNC
 
 COPY ./reinforcement_learning/src/utils/noVNC_patch/ /app/patch/
+COPY ./reinforcement_learning/src/utils/serve.py /app/serve.py
 COPY ./reinforcement_learning/src/utils/noVNC/ /app/noVNC/
+
+COPY ./reinforcement_learning/configs/default.yaml /app/configs/default.yaml
 
 ENTRYPOINT ["/bin/sh", "/app/patch/patch_entrypoint.sh"]

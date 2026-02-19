@@ -9,8 +9,8 @@ server:
   reconnect_delay: 2.0
   read_timeout: 0.0
 
-visualizer:
-  ip: "192.168.22.116"
+trainer:
+  host: "192.168.22.106"
 
 capture:
   monitor:
