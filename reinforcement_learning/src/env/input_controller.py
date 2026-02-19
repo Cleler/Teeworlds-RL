@@ -542,9 +542,11 @@ import struct
 # = : natif sans padding
 # i i i i i f f i i Q
 # dir jump fire hook wpn aim_x aim_y win_w win_h seq
+
 _FMT  = "=iiiiiffiiQ"
 _SIZE = struct.calcsize(_FMT)
 
+print("calcsize", struct.calcsize(_FMT))
 
 class InputController:
     def __init__(self, key_mapping: dict = None,
@@ -632,6 +634,7 @@ class InputController:
         data = struct.pack(_FMT,
                            direction, jump, fire, hook, weapon,
                            aim_x, aim_y, win_w, win_h, seq)
+
         self._mm.seek(0)
         self._mm.write(data)
         self._mm.flush()

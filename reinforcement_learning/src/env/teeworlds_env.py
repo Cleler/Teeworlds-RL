@@ -154,9 +154,11 @@ class TeeWorldsEnv(gym.Env):
         aim = action["aim"]
         self.controller.apply_action(
             direction=int(keys[0]),
-            jump=int(keys[1]),
+            #jump=int(keys[1]),
+            jump=1,
             fire=int(keys[2]),
-            hook=int(keys[3]),
+            #hook=int(keys[3]),
+            hook=0,
             weapon_switch=int(keys[4]) if len(keys)>4 else 0,
             aim_x=float(aim[0]),
             aim_y=float(aim[1]),
@@ -234,7 +236,8 @@ class TeeWorldsEnv(gym.Env):
         reward += deaths * self.reward_config["death"]
         reward += damage_dealt * self.reward_config["damage_dealt"]
         reward += self.reward_config["survival_bonus"]
-
+        if reward > 0.1:
+            print("reward :",reward,kills,deaths,damage_dealt,self.reward_config["survival_bonus"] )
         return reward
 
     def _get_info(self) -> dict:
