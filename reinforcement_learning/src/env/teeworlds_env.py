@@ -241,33 +241,29 @@ class TeeWorldsEnv(gym.Env):
         current_pos = self.econ.get_position(self.agent_id)
         
         if self._last_pos is not None:
-            # Distance parcourue depuis le dernier step
             dx = current_pos[0] - self._last_pos[0]
             dy = current_pos[1] - self._last_pos[1]
             dist = (dx**2 + dy**2) ** 0.5
 
-            # Historique pour détecter la stagnation
             self._pos_history.append(current_pos)
             if len(self._pos_history) > self._pos_history_size:
                 self._pos_history.pop(0)
 
-            # Dispersion sur la fenêtre glissante
-            # Si l'agent tourne en rond, la dispersion sera faible
             if len(self._pos_history) >= 3:
                 xs = [p[0] for p in self._pos_history]
                 ys = [p[1] for p in self._pos_history]
                 spread = ((max(xs)-min(xs))**2 + (max(ys)-min(ys))**2) ** 0.5
-                # Normaliser : 200 unités TW = déplacement significatif
-                spread_norm = min(spread / 200.0, 1.0)
+                spread_norm = min(spread / 200.0, 1.0)  # 0=immobile, 1=très mobile
             else:
                 spread_norm = 0.0
 
-            # Reward mouvement :
-            # - bonus si l'agent s'est déplacé ce step
-            # - multiplié par la dispersion (anti-rotation sur place)
-            # - plafonné pour rester sous le reward combat
-            move_bonus = min(dist / 50.0, 0.3) * (0.5 + 0.5 * spread_norm)
-            r += move_bonus * self.reward_cfg.get("movement_scale", 0.1)
+            # x ∈ [-1, 1] : -1=immobile, +1=très mobile
+            x = 2.0 * spread_norm - 1.0
+
+            # Fonction carré signée : sign(x) * x² → effet quadratique symétrique
+            # immobile total → -scale, mobile total → +scale
+            movement_reward = (x * abs(x)) * self.reward_cfg.get("movement_scale", 5.0)
+            r += movement_reward
 
         self._last_pos = current_pos
         return r
