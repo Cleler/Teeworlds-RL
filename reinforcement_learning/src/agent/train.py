@@ -205,6 +205,8 @@ def train_multi(config: dict):
     model = Ar_2(input_size=input_size, backbone_pretrained=train_cfg.get("pretrained", False)).to(device)
     target_model = copy.deepcopy(model)
     target_model.eval()
+    inference_model = copy.deepcopy(model)
+    inference_model.eval()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=train_cfg["learning_rate"])
     criterion = Ar_2Loss(gamma=train_cfg["gamma"], aim_weight=train_cfg.get("aim_weight", 1.0))
@@ -231,25 +233,6 @@ def train_multi(config: dict):
     train_executor = ThreadPoolExecutor(max_workers=1)
     train_future = None
 
-    # visualizer_ip = visualizer_cfg.get("ip", "192.168.22.116")
-    # visualizer_url = f"http://{visualizer_ip}:5000/update/"
-    
-    # network_executor = ThreadPoolExecutor(max_workers=4)
-    
-    # def send_frame_to_visualizer(bot_id, frame):
-    #     try:
-    #         if len(frame.shape) == 3 and frame.shape[2] == 1:
-    #             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-    #         ret, buffer = cv2.imencode('.jpg', frame)
-            
-    #         if ret:
-    #             requests.post(f"{visualizer_url}{bot_id}", data=buffer.tobytes(), timeout=2.0)
-    #         else:
-    #             print(f"⚠️ Erreur: OpenCV n'a pas pu encoder l'image du bot {bot_id}")
-                
-    #     except Exception as e:
-    #         print(f"⚠️ Erreur réseau (Visualizer Bot {bot_id}) : {e}")
-                    
     logger.info(f"Début de l'entraînement ({total_timesteps} timesteps, {actual_n} envs)...")
 
     try:
@@ -257,95 +240,70 @@ def train_multi(config: dict):
             global_step += actual_n
             epsilon = get_epsilon(global_step, eps_start, eps_end, eps_decay)
 
-            # Sélection d'actions en batch
+            # Inférence sur inference_model (safe, pas de backward dessus)
             images, positions = obs_list_to_tensors(obs_list, device)
-            actions = select_actions_batch(model, images, positions, epsilon, device, actual_n)
+            actions = select_actions_batch(inference_model, images, positions, epsilon, device, actual_n)
 
-            # Step sur tous les envs
             env_actions = [action_to_env(a) for a in actions]
-            print(env_actions)
             results = manager.step_all(env_actions)
 
-
-            # Stocker les transitions et gérer les épisodes
+            # Stocker les transitions
             new_obs_list = []
             for i, (obs, act, (next_obs, reward, terminated, truncated, info)) in \
                     enumerate(zip(obs_list, actions, results)):
-
                 done = terminated or truncated
-                aim_target = act["aim"]
-                buffer.push(obs, act, reward, next_obs, float(done), aim_target)
+                buffer.push(obs, act, reward, next_obs, float(done), act["aim"])
                 episode_rewards[i] += reward
-                
+
                 if done:
                     episode_counts[i] += 1
                     writer.add_scalar(f"env_{i}/episode_reward", episode_rewards[i], episode_counts[i])
                     writer.add_scalar(f"env_{i}/kills", info.get("kills", 0), episode_counts[i])
                     writer.add_scalar(f"env_{i}/deaths", info.get("deaths", 0), episode_counts[i])
-
                     logger.info(
                         f"Env {i} | Episode {episode_counts[i]} | "
                         f"reward={episode_rewards[i]:.2f} | "
                         f"kills={info.get('kills', 0)} deaths={info.get('deaths', 0)}"
                     )
                     episode_rewards[i] = 0.0
-
-                    # Reset cet env
                     reset_obs, _ = manager.envs[i].reset()
                     new_obs_list.append(reset_obs)
                 else:
                     new_obs_list.append(next_obs)
 
             obs_list = new_obs_list
-            
-            # for i, obs in enumerate(obs_list):
-            #     hd_frame = manager.envs[i].capture.grab_raw()
-            #     network_executor.submit(send_frame_to_visualizer, i, hd_frame)
-                
-            print("="*50)
 
-            print("type_buffer", type(buffer))
-            print("buffer_pos : ", buffer.positions)
-            #print("buffer_actions : ", buffer.actions)
-            print("buffer_aim : ", buffer.aim_targets)
-            print("buffer_reward : ", buffer.rewards)
-            print("buffer_next_state : ", buffer.next_positions)
-            #print("buffer_aim : ", buffer.buffer[0]['aim'])
-            print(min_buffer_size)
-
-
-            # ---- Entraînement ----
-            # ---- Training asynchrone ----
-            # On lance un train_step seulement si le précédent est terminé
-            # → le forward/backward ne bloque jamais apply_action
+            # ---- Training asynchrone — UN SEUL bloc ----
             if len(buffer) >= min_buffer_size:
-                if train_future is None or train_future.done():
-                    # Récupérer le résultat du step précédent pour les logs
-                    if train_future is not None and train_future.done():
-                        try:
-                            loss = train_future.result()
-                            if global_step % (200 * actual_n) == 0:
-                                writer.add_scalar("train/loss", loss, global_step)
-                                writer.add_scalar("train/epsilon", epsilon, global_step)
-                                writer.add_scalar("train/buffer_size", len(buffer), global_step)
-                        except Exception as e:
-                            logger.error(f"Erreur train_step: {e}")
+                if train_future is None:
+                    train_future = train_executor.submit(
+                        train_step, model, target_model, optimizer,
+                        criterion, buffer, batch_size, device
+                    )
+                elif train_future.done():
+                    try:
+                        loss = train_future.result()
+                        inference_model.load_state_dict(model.state_dict())
+                        inference_model.eval()
+                        if global_step % (200 * actual_n) == 0:
+                            writer.add_scalar("train/loss", loss, global_step)
+                            writer.add_scalar("train/epsilon", epsilon, global_step)
+                            writer.add_scalar("train/buffer_size", len(buffer), global_step)
+                    except Exception as e:
+                        logger.error(f"Erreur train_step: {e}")
 
-                    # Lancer le prochain train_step en arrière-plan
                     train_future = train_executor.submit(
                         train_step, model, target_model, optimizer,
                         criterion, buffer, batch_size, device
                     )
 
-            # if len(buffer) >= min_buffer_size:
-            #     loss = train_step(model, target_model, optimizer, criterion,
-            #                       buffer, batch_size, device)
-            #     print("loss", loss)
-
-            #     if global_step % (100 * actual_n) == 0:
-            #         writer.add_scalar("train/loss", loss, global_step)
-            #         writer.add_scalar("train/epsilon", epsilon, global_step)
-            #         writer.add_scalar("train/buffer_size", len(buffer), global_step)
+            print("="*50)
+            print("type_buffer", type(buffer))
+            print("buffer_pos : ", buffer.positions)
+            print("buffer_aim : ", buffer.aim_targets)
+            print("buffer_reward : ", buffer.rewards)
+            print("buffer_next_state : ", buffer.next_positions)
+            print("min_buffer_size", min_buffer_size)
 
             # ---- Target network ----
             if global_step % target_update == 0:
@@ -356,7 +314,6 @@ def train_multi(config: dict):
                 path = os.path.join(train_cfg["save_path"], f"ar2_step_{global_step}.pt")
                 torch.save(model.state_dict(), path)
                 logger.info(f"Checkpoint: {path} (eps={epsilon:.3f})")
-
     except KeyboardInterrupt:
         logger.info("Entraînement interrompu")
     finally:

@@ -137,8 +137,6 @@ class TeeWorldsEnv(gym.Env):
         self.episode_damage_dealt = 0
         self._pos_history = []
         self._last_pos = None
-
-        self.last_step_time = time.time()
         
         # # Vider le buffer econ
         # self.econ.poll()
@@ -152,7 +150,7 @@ class TeeWorldsEnv(gym.Env):
 
     def step(self, action):
         print(f"STEP {self.current_step} | KEYS {action['keys']} | AIM {action['aim']}")
-
+        step_start = time.time()
         self.current_step += 1
 
         # Appliquer l'action
@@ -169,7 +167,7 @@ class TeeWorldsEnv(gym.Env):
             aim_y=float(aim[1]),
         )
 
-        elapsed = time.time() - self.last_step_time
+        elapsed = time.time() - step_start
         sleep_time = self.tick_interval - elapsed
         
         if sleep_time > 0:
@@ -190,8 +188,6 @@ class TeeWorldsEnv(gym.Env):
         # Si mort, relâcher les touches
         if terminated:
             self.controller.release_all()
-
-        self.last_step_time = time.time()
         
         return obs, reward, terminated, truncated, info
 

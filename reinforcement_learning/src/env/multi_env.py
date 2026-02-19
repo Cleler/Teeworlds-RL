@@ -331,14 +331,13 @@ class MultiEnvManager:
             self.shared_econ.poll()
 
         def _reset(env):
-            ret = env.reset()
-            obs, info = ret
+            obs, info = env.reset()
             print(f"[RESET] env={id(env)}")
             print(f"  position : {obs['position']}")
             print(f"  image shape : {obs['image'].shape}")
             print(f"  image min/max : {obs['image'].min()} / {obs['image'].max()}")
             print(f"  info : {info}")
-            return env.reset()
+            return obs, info
 
         futures = [self.executor.submit(_reset, env) for env in self.envs]
         results = [f.result() for f in futures]
@@ -352,15 +351,18 @@ class MultiEnvManager:
         #     results.append(env.step(action))
         #     logger.debug(f"Env {i} done")
         # return results
-        if hasattr(self, 'shared_econ'):
-            self.shared_econ.poll()
 
         def _step(args):
             env, action = args
             return env.step(action)
 
         futures = [self.executor.submit(_step, (env, act)) for env, act in zip(self.envs, actions)]
-        return [f.result() for f in futures]
+        results = [f.result() for f in futures]
+
+        if hasattr(self, 'shared_econ'):
+            self.shared_econ.poll()
+            
+        return results
 
     # ------------------------------------------------------------------
     # Nettoyage
