@@ -40,8 +40,8 @@ reward:
   kill: 10.0
   death: -2.0
   damage_dealt: 1.0
-  survival_bonus: 0.0
-  movement_scale: 10
+  survival_bonus: 0.01
+  movement_scale: 0.1
   
 # ============================================
 # Multi-environnement (grille de clients)

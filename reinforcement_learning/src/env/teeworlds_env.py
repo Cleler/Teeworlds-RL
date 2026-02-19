@@ -263,6 +263,7 @@ class TeeWorldsEnv(gym.Env):
             # Fonction carré signée : sign(x) * x² → effet quadratique symétrique
             # immobile total → -scale, mobile total → +scale
             movement_reward = (x * abs(x)) * self.reward_config.get("movement_scale", 5.0)
+            print("dist : ",dist)
             print("move reward :",movement_reward)
             r += movement_reward
 

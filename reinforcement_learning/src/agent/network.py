@@ -217,6 +217,7 @@ class Ar_2Loss(nn.Module):
             aim_targets  -- (batch, 2) ground truth (sin, cos)
         """
         total_loss = 0
+        print("done rate:", dones.mean().item())  # should not be 0.0
 
         for head in self.DISCRETE_HEADS:
             print("head : ",head)
@@ -228,7 +229,7 @@ class Ar_2Loss(nn.Module):
                 print("rewards value :",rewards)
                 target = rewards + self.gamma * best_next_q * (1 - dones)
                 print("target value :",best_next_q)
-            total_loss += self.dqn_loss(q_taken, target)
+            total_loss += self.dqn_loss(q_taken, target).mean()
 
         total_loss += self.aim_weight * self.aim_loss(outputs["aim"], aim_targets)
 
