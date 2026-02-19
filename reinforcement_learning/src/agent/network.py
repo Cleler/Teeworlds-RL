@@ -203,7 +203,7 @@ class Ar_2Loss(nn.Module):
         super().__init__()
         self.gamma = gamma
         self.aim_weight = aim_weight
-        self.dqn_loss = nn.HuberLoss()
+        self.dqn_loss = nn.HuberLoss(reduction='none',dewlta=100)
         self.aim_loss = nn.MSELoss()
 
     def forward(self, outputs, actions, rewards, next_outputs, dones, aim_targets):
