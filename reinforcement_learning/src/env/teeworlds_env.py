@@ -270,8 +270,6 @@ class TeeWorldsEnv(gym.Env):
             # Fonction carré signée : sign(x) * x² → effet quadratique symétrique
             # immobile total → -scale, mobile total → +scale
             movement_reward = (x * abs(x)) * self.reward_config.get("movement_scale", 5.0)
-            print("dist : ",dist)
-            print("move reward :",movement_reward)
             r += movement_reward
     
         # ── Reward proximité ennemie selon l'arme ─────────────────────────
@@ -304,7 +302,7 @@ class TeeWorldsEnv(gym.Env):
                 else:                            # pistolet
                     x = 2.0 * dist_norm - 1.0   # loin→+1, proche→-1
 
-                proximity_reward = (x * abs(x)) * self.reward_cfg.get("proximity_scale", 3.0)
+                proximity_reward = (x * abs(x)) * self.reward_config.get("proximity_scale", 3.0)
                 r += proximity_reward
 
         self._last_pos = current_pos

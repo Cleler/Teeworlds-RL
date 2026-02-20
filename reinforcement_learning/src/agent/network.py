@@ -136,7 +136,7 @@ class Ar_2(nn.Module):
         img_features = self.backbone(image).flatten(1)           # (batch, 1024)
         combined = torch.cat([img_features, extra_vars], dim=1)  # (batch, 1024 + input_size)
         x = self.network(combined)
-
+        
         return {
             "move":   self.head_move(x),
             "jump":   self.head_jump(x),
@@ -217,18 +217,17 @@ class Ar_2Loss(nn.Module):
             aim_targets  -- (batch, 2) ground truth (sin, cos)
         """
         total_loss = 0
-        print("done rate:", dones.mean().item())  # should not be 0.0
 
         for head in self.DISCRETE_HEADS:
-            print("head : ",head)
+            #print("head : ",head)
             q_taken = outputs[head].gather(1, actions[head].unsqueeze(1)).squeeze(1)
-            print("present value :",q_taken)
+            #print("present value :",q_taken)
             with torch.no_grad():
                 best_next_q = next_outputs[head].max(dim=1).values
-                print("old value :",best_next_q)
-                print("rewards value :",rewards)
+                #print("old value :",best_next_q)
+                #print("rewards value :",rewards)
                 target = rewards + self.gamma * best_next_q * (1 - dones)
-                print("target value :",best_next_q)
+                #print("target value :",best_next_q)
             total_loss += self.dqn_loss(q_taken, target).mean()
 
         total_loss += self.aim_weight * self.aim_loss(outputs["aim"], aim_targets)

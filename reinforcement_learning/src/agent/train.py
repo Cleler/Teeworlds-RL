@@ -13,6 +13,10 @@ import logging
 import numpy as np
 import torch
 import cv2
+import time
+import json
+import matplotlib.pyplot as plt
+
 # import requests
 from concurrent.futures import ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
@@ -41,7 +45,7 @@ def select_action(model: Ar_2, image: torch.Tensor, position: torch.Tensor,
         for head, size in HEAD_SIZES.items():
             action[head] = np.random.randint(size)
         action["aim"] = np.random.uniform(-1, 1, size=(2,)).astype(np.float32)
-        print("random_action : ", action)
+        #print("random_action : ", action)
     else:
         with torch.no_grad():
             outputs = model(image, position)
@@ -64,14 +68,14 @@ def select_actions_batch(model: Ar_2, images: torch.Tensor, positions: torch.Ten
     # Forward en un seul batch pour l'exploitation
     with torch.no_grad():
         outputs = model(images, positions)
-    print(epsilon)
+    print("epsilon : ",epsilon)
     for i in range(n):
         action = {}
         if np.random.random() < epsilon:
             for head, size in HEAD_SIZES.items():
                 action[head] = np.random.randint(size)
             action["aim"] = np.random.uniform(-1, 1, size=(2,)).astype(np.float32)
-            print("random_action : ", action)
+            #print("random_action : ", action)
         else:
             for head in DISCRETE_HEADS:
                 action[head] = outputs[head][i].argmax().item()
@@ -133,9 +137,9 @@ def train_step(model, target_model, optimizer, criterion, buffer, batch_size, de
     with torch.no_grad():
         next_outputs = target_model(batch["next_images"], batch["next_positions"])
 
-    print("actions", batch["actions"])
-    print("rewards", batch["rewards"])
-    print("aim", batch["aim_targets"])
+    # print("actions", batch["actions"])
+    # print("rewards", batch["rewards"])
+    # print("aim", batch["aim_targets"])
 
     loss = criterion(
         outputs=outputs,
@@ -145,7 +149,7 @@ def train_step(model, target_model, optimizer, criterion, buffer, batch_size, de
         dones=batch["dones"],
         aim_targets=batch["aim_targets"],
     )
-    print("loss ", loss)
+    print("loss = ", loss)
     optimizer.zero_grad()
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
@@ -209,8 +213,20 @@ def train_multi(config: dict):
     inference_model.eval()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=train_cfg["learning_rate"])
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=train_cfg["learning_rate"],          # pic au milieu
+        total_steps=train_cfg["total_timesteps"]*actual_n,
+        pct_start=0.1,        # 30% du training pour monter, 70% pour descendre
+        div_factor=1e1,      # lr_start = max_lr / 25
+        final_div_factor=1e4, # lr_end  = max_lr / (25 * 10000)
+        anneal_strategy="cos",
+    )
+
     criterion = Ar_2Loss(gamma=train_cfg["gamma"], aim_weight=train_cfg.get("aim_weight", 1.0))
     buffer = ReplayBuffer(capacity=train_cfg.get("buffer_size", 100_000))
+
+    loss_history = []
 
     # ---- Hyperparamètres ----
     batch_size = train_cfg["batch_size"]
@@ -234,9 +250,10 @@ def train_multi(config: dict):
     train_future = None
 
     logger.info(f"Début de l'entraînement ({total_timesteps} timesteps, {actual_n} envs)...")
-
+    
     try:
-        while global_step < total_timesteps:
+        while global_step < total_timesteps * actual_n:
+            start_time = time.time()
             global_step += actual_n
             epsilon = get_epsilon(global_step, eps_start, eps_end, eps_decay)
 
@@ -283,12 +300,19 @@ def train_multi(config: dict):
                 elif train_future.done():
                     try:
                         loss = train_future.result()
+                        ## add loss to history
+                        loss_history.append((global_step/actual_n, loss))
+
+                        scheduler.step()  # ← ici
+                        current_lr = optimizer.param_groups[0]["lr"]
+
                         inference_model.load_state_dict(model.state_dict())
                         inference_model.eval()
                         if global_step % (200 * actual_n) == 0:
                             writer.add_scalar("train/loss", loss, global_step)
                             writer.add_scalar("train/epsilon", epsilon, global_step)
                             writer.add_scalar("train/buffer_size", len(buffer), global_step)
+                            writer.add_scalar("train/learning_rate", current_lr, global_step)
                     except Exception as e:
                         logger.error(f"Erreur train_step: {e}")
 
@@ -296,14 +320,6 @@ def train_multi(config: dict):
                         train_step, model, target_model, optimizer,
                         criterion, buffer, batch_size, device
                     )
-
-            print("="*50)
-            print("type_buffer", type(buffer))
-            print("buffer_pos : ", buffer.positions)
-            print("buffer_aim : ", buffer.aim_targets)
-            print("buffer_reward : ", buffer.rewards)
-            print("buffer_next_state : ", buffer.next_positions)
-            print("min_buffer_size", min_buffer_size)
 
             # ---- Target network ----
             if global_step % target_update == 0:
@@ -314,6 +330,11 @@ def train_multi(config: dict):
                 path = os.path.join(train_cfg["save_path"], f"ar2_step_{global_step}.pt")
                 torch.save(model.state_dict(), path)
                 logger.info(f"Checkpoint: {path} (eps={epsilon:.3f})")
+            print(f"STEP: {global_step/actual_n:.0f} | lr={optimizer.param_groups[0]['lr']:.2e} | eps={epsilon:.3f}")
+
+            estimated_time = (time.time() - start_time)*(total_timesteps-global_step/actual_n)
+            print('estimated time = ', f"{estimated_time//3600}h {estimated_time % 3600}s")
+
     except KeyboardInterrupt:
         logger.info("Entraînement interrompu")
     finally:
@@ -321,6 +342,34 @@ def train_multi(config: dict):
             train_future.cancel()
         train_executor.shutdown(wait=False)
         
+
+        loss_path = os.path.join(train_cfg["save_path"], "loss_history.json")
+        with open(loss_path, "w") as f:
+            json.dump(loss_history, f)
+        logger.info(f"Loss history saved: {loss_path}")
+
+        # Plot
+        if loss_history:
+
+            steps, losses = zip(*loss_history)
+            plt.figure(figsize=(12, 4))
+            plt.plot(steps, losses, alpha=0.4, color="steelblue", label="loss brute")
+            
+            # Moyenne glissante
+            window = min(50, len(losses))
+            moving_avg = np.convolve(losses, np.ones(window)/window, mode="valid")
+            plt.plot(steps[window-1:], moving_avg, color="red", linewidth=2, label=f"moyenne ({window})")
+            
+            plt.xlabel("Steps")
+            plt.ylabel("Loss")
+            plt.title("Training Loss")
+            plt.legend()
+            plt.tight_layout()
+            plot_path = os.path.join(train_cfg["save_path"], "loss_plot.png")
+            plt.savefig(plot_path, dpi=150)
+            plt.close()
+            logger.info(f"Loss plot saved: {plot_path}")
+
         final_path = os.path.join(train_cfg["save_path"], "ar2_final.pt")
         torch.save(model.state_dict(), final_path)
         logger.info(f"Modèle final: {final_path}")
@@ -374,9 +423,9 @@ def train_single(config: dict):
     try:
         while global_step < total_timesteps:
             obs, info = env.reset()
-            print("RAW position:", obs["position"])  # Is it actually [0,0] from the env?
-            print("RAW image shape:", obs["image"].shape)
-            print("RAW image min/max:", obs["image"].min(), obs["image"].max())
+            # print("RAW position:", obs["position"])  # Is it actually [0,0] from the env?
+            # print("RAW image shape:", obs["image"].shape)
+            # print("RAW image min/max:", obs["image"].min(), obs["image"].max())
             episode_reward = 0
             done = False
             episode += 1

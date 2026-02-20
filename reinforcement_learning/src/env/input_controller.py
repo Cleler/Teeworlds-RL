@@ -546,8 +546,6 @@ import struct
 _FMT  = "=iiiiiffiiQ"
 _SIZE = struct.calcsize(_FMT)
 
-print("calcsize", struct.calcsize(_FMT))
-
 class InputController:
     def __init__(self, key_mapping: dict = None,
                  aim_radius: int = 300,

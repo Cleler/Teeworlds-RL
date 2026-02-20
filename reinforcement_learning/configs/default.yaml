@@ -50,7 +50,7 @@ reward:
 multi_env:
   enabled: true             # false → mode single, true → mode grille
   n_envs: 12                 # nombre de clients (commence petit, augmente après)
-  grid_cols: 2              # colonnes de la grille (null = auto √n)
+  grid_cols: 4              # colonnes de la grille (null = auto √n)
 
   # Résolution de ton écran
   screen_width: 1920
@@ -63,22 +63,22 @@ multi_env:
   game_port: 8303
 
   # Délai entre chaque lancement de client (secondes)
-  connect_delay: 0.1
+  connect_delay: 0.50
 
 training:
   architecture: "Ar_2"
   pretrained: false
-  total_timesteps: 500_000
-  learning_rate: 0.0001
-  batch_size: 32
+  total_timesteps: 100_000
+  learning_rate: 0.01
+  batch_size: 16
   gamma: 0.99
   eps_start: 1.0
-  eps_end: 0.05
-  eps_decay: 50_000
-  buffer_size: 100_000
-  min_buffer_size: 100
+  eps_end: 0.1
+  eps_decay: 500_000
+  buffer_size: 100_001
+  min_buffer_size: 1000
   target_update: 1000
   aim_weight: 1.0
-  save_freq: 50_000
+  save_freq: 10_000
   save_path: "./reinforcement_learning/checkpoints"
   log_path: "./reinforcement_learning/logs"
